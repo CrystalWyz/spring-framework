@@ -249,6 +249,7 @@ public abstract class AbstractBeanFactory extends FactoryBeanRegistrySupport imp
 			String name, @Nullable Class<T> requiredType, @Nullable Object[] args, boolean typeCheckOnly)
 			throws BeansException {
 
+		// 提取对应的beanName，为什么需要进行转换呢？原因在于当bean对象实现FactoryBean接口之后就会变成&beanName，同属如果存在别名
 		String beanName = transformedBeanName(name);
 		Object beanInstance;
 
@@ -958,6 +959,7 @@ public abstract class AbstractBeanFactory extends FactoryBeanRegistrySupport imp
 	public void addBeanPostProcessor(BeanPostProcessor beanPostProcessor) {
 		Assert.notNull(beanPostProcessor, "BeanPostProcessor must not be null");
 		// Remove from old position, if any
+		// 从老的位置移除此beanPostProcessor
 		this.beanPostProcessors.remove(beanPostProcessor);
 		// Add to end of list
 		this.beanPostProcessors.add(beanPostProcessor);
