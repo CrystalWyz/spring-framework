@@ -1,5 +1,6 @@
 /*
- * Copyright 2002-2021 the original author or authors.
+ *  spring提供的一个工具类，用于解析bean定义中属性值里面的占位符，此类不能被直接实例化使用
+ *  Copyright 2002-2021 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
