@@ -190,6 +190,7 @@ class ConfigurationClassParser {
 			}
 		}
 
+		// 处理延迟importSelector
 		this.deferredImportSelectorHandler.process();
 	}
 

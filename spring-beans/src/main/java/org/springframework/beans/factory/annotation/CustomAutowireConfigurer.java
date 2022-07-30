@@ -90,34 +90,48 @@ public class CustomAutowireConfigurer implements BeanFactoryPostProcessor, BeanC
 	@Override
 	@SuppressWarnings("unchecked")
 	public void postProcessBeanFactory(ConfigurableListableBeanFactory beanFactory) throws BeansException {
+		// 如果customQualifierTypes不等于空
 		if (this.customQualifierTypes != null) {
+			// 如果beanFactory不是DefaultListableBeanFactory类型，那么抛出异常
 			if (!(beanFactory instanceof DefaultListableBeanFactory)) {
 				throw new IllegalStateException(
 						"CustomAutowireConfigurer needs to operate on a DefaultListableBeanFactory");
 			}
+			// 完成类型的强制转换
 			DefaultListableBeanFactory dlbf = (DefaultListableBeanFactory) beanFactory;
+			// 如果dlbf中的用于检查备案定义的autowire选候者解析器不是QualifierAnnotationAutowireCandidateResolver子类，那么
+			// 设置它为QualifierAnnotationAutowireCandidateResolver类型
 			if (!(dlbf.getAutowireCandidateResolver() instanceof QualifierAnnotationAutowireCandidateResolver)) {
+				// 设置bean工厂用于检查bean定义是否为autowired候选者的解析器
 				dlbf.setAutowireCandidateResolver(new QualifierAnnotationAutowireCandidateResolver());
 			}
+			// 获取限定符注解自动装配候选解析器
 			QualifierAnnotationAutowireCandidateResolver resolver =
 					(QualifierAnnotationAutowireCandidateResolver) dlbf.getAutowireCandidateResolver();
+			// 遍历自定义限定符类型(Class<? exteds Annotation>或者String类型)
 			for (Object value : this.customQualifierTypes) {
 				Class<? extends Annotation> customType = null;
 				if (value instanceof Class) {
+					// 如果是Class类型，那么强制转化为Class<? exteds Annotation>类型
 					customType = (Class<? extends Annotation>) value;
 				}
+				// 如果是String类型，那么转换成String类型
 				else if (value instanceof String) {
 					String className = (String) value;
+					// 通过类名获取到类的字节码
 					customType = (Class<? extends Annotation>) ClassUtils.resolveClassName(className, this.beanClassLoader);
 				}
+				// 如果是其他类型，那么抛出异常
 				else {
 					throw new IllegalArgumentException(
 							"Invalid value [" + value + "] for custom qualifier type: needs to be Class or String.");
 				}
+				// 如果customType不是Annotation类型，抛出异常
 				if (!Annotation.class.isAssignableFrom(customType)) {
 					throw new IllegalArgumentException(
 							"Qualifier type [" + customType.getName() + "] needs to be annotation type");
 				}
+				// 将customType添加到用于检查bean定义是否为autowire候选者的解析其中
 				resolver.addQualifierType(customType);
 			}
 		}
