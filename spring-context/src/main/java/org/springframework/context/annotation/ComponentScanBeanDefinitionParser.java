@@ -166,6 +166,7 @@ public class ComponentScanBeanDefinitionParser implements BeanDefinitionParser {
 			}
 		}
 
+		// 出发组件注册事件，默认实现为EmptyReaderEventListener
 		readerContext.fireComponentRegistered(compositeDef);
 	}
 
