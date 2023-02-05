@@ -555,7 +555,7 @@ public abstract class AbstractApplicationContext extends DefaultResourceLoader
 			/*
 			 * 1、设置容器的启动时间
 			 * 2、设置开启和关闭状态
-			 * 3、创建Environment对象，并设置当前系统的属性值到Environment对象中
+			 * 3、获取Environment对象，并设置当前系统的属性值到Environment对象中
 			 * 4、创建监听器和事件的集合，默认为空集合
 			 */
 			prepareRefresh();
