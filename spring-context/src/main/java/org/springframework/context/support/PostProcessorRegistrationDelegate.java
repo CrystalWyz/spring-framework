@@ -288,39 +288,50 @@ final class PostProcessorRegistrationDelegate {
 		// to ensure that your proposal does not result in a breaking change:
 		// https://github.com/spring-projects/spring-framework/issues?q=PostProcessorRegistrationDelegate+is%3Aclosed+label%3A%22status%3A+declined%22
 
+		// 找到所有实现了BeanPostProcessor接口的类
 		String[] postProcessorNames = beanFactory.getBeanNamesForType(BeanPostProcessor.class, true, false);
 
 		// Register BeanPostProcessorChecker that logs an info message when
 		// a bean is created during BeanPostProcessor instantiation, i.e. when
 		// a bean is not eligible for getting processed by all BeanPostProcessors.
-		// BeanPostProcessorChecker是一个普通的信息打印，可能会有些情况，当Spring的配置中的后处理器还没有被注册就已经开始了
-		// 打印BeanPostProcessorChecker中设定的信息
+		// 记录下BeanPostProcessor的目标计数
+		// 此处为什么要+1？会在此方法的最后添加一个BeanPostProcessorChecker的类
 		int beanProcessorTargetCount = beanFactory.getBeanPostProcessorCount() + 1 + postProcessorNames.length;
+		// 添加BeanPostProcessorChecker(主要用于记录信息)到beanFactory中
 		beanFactory.addBeanPostProcessor(new BeanPostProcessorChecker(beanFactory, beanProcessorTargetCount));
 
 		// Separate between BeanPostProcessors that implement PriorityOrdered,
 		// Ordered, and the rest.
+		// 定义存放实现了PriorityOrdered接口的BeanPostProcessor集合
 		List<BeanPostProcessor> priorityOrderedPostProcessors = new ArrayList<>();
+		// 定义存放spring内部的BeanPostProcessor
 		List<BeanPostProcessor> internalPostProcessors = new ArrayList<>();
+		// 定义存放实现了Ordered接口的BeanPostProcessor的name集合
 		List<String> orderedPostProcessorNames = new ArrayList<>();
+		// 定义存放普通的BeanPostProcessor的name集合
 		List<String> nonOrderedPostProcessorNames = new ArrayList<>();
 		for (String ppName : postProcessorNames) {
+			// 多个ppName对应的BeanPostProcessor实例实现了PriorityOrdered接口，则获取到ppName对应的BeanPostprocessor的实例添加到priorityOrderedPostProcessors中
 			if (beanFactory.isTypeMatch(ppName, PriorityOrdered.class)) {
 				BeanPostProcessor pp = beanFactory.getBean(ppName, BeanPostProcessor.class);
 				priorityOrderedPostProcessors.add(pp);
+				// 如果ppName对应的BeanPostProcessor实例也实现了MergedBeanDefinitionPostProcessor接口，那么将ppName对应的bean实例添加到internalPostProcessors中
 				if (pp instanceof MergedBeanDefinitionPostProcessor) {
 					internalPostProcessors.add(pp);
 				}
 			}
+			// 如果ppName对应的BeanPostProcessor实例没有实现PriorityOrdered接口，但是实现了Ordered接口，那么将ppName对应的bean实例添加到orderedPostProcessorNames中
 			else if (beanFactory.isTypeMatch(ppName, Ordered.class)) {
 				orderedPostProcessorNames.add(ppName);
 			}
 			else {
+				// 否则将ppName添加到nonOrderedPostProcessorNames中
 				nonOrderedPostProcessorNames.add(ppName);
 			}
 		}
 
 		// First, register the BeanPostProcessors that implement PriorityOrdered.
+		// 首先，对实现了PriorityOrdered接口的BeanPostProcessor实例进行排序操作
 		sortPostProcessors(priorityOrderedPostProcessors, beanFactory);
 		registerBeanPostProcessors(beanFactory, priorityOrderedPostProcessors);
 
@@ -358,16 +369,21 @@ final class PostProcessorRegistrationDelegate {
 
 	private static void sortPostProcessors(List<?> postProcessors, ConfigurableListableBeanFactory beanFactory) {
 		// Nothing to sort?
+		// 如果postProcessors的个数小于等于1，那么不做任何排序操作
 		if (postProcessors.size() <= 1) {
 			return;
 		}
 		Comparator<Object> comparatorToUse = null;
+		// 判断是否是DefaultListableBeanFactory类型
 		if (beanFactory instanceof DefaultListableBeanFactory) {
+			// 获取设置的比较器
 			comparatorToUse = ((DefaultListableBeanFactory) beanFactory).getDependencyComparator();
 		}
 		if (comparatorToUse == null) {
+			// 如果没有设置比较器，则使用默认的orderComparator
 			comparatorToUse = OrderComparator.INSTANCE;
 		}
+		// 使用比较器对postProcessors进行排序
 		postProcessors.sort(comparatorToUse);
 	}
 
@@ -435,13 +451,27 @@ final class PostProcessorRegistrationDelegate {
 			this.beanPostProcessorTargetCount = beanPostProcessorTargetCount;
 		}
 
+		/**
+		 * 后置处理器的before方法，什么都不做，直接返回对象
+		 * @param bean the new bean instance
+		 * @param beanName the name of the bean
+		 * @return
+		 */
 		@Override
 		public Object postProcessBeforeInitialization(Object bean, String beanName) {
 			return bean;
 		}
 
+		/**
+		 * 后置处理器的after方法，用来判断那先是不需要检测的bean
+		 * @param bean the new bean instance
+		 * @param beanName the name of the bean
+		 * @return
+		 */
 		@Override
 		public Object postProcessAfterInitialization(Object bean, String beanName) {
+			// 1、BeanPostProcessor类型不检测
+			// 2、ROLE_INFRASTRUCTURE这种类型的bean不检测(Spring自己的bean)
 			if (!(bean instanceof BeanPostProcessor) && !isInfrastructureBean(beanName) &&
 					this.beanFactory.getBeanPostProcessorCount() < this.beanPostProcessorTargetCount) {
 				if (logger.isInfoEnabled()) {
@@ -453,6 +483,11 @@ final class PostProcessorRegistrationDelegate {
 			return bean;
 		}
 
+		/**
+		 * 检测当前的bean是否是Spring自己的bean
+		 * @param beanName
+		 * @return
+		 */
 		private boolean isInfrastructureBean(@Nullable String beanName) {
 			if (beanName != null && this.beanFactory.containsBeanDefinition(beanName)) {
 				BeanDefinition bd = this.beanFactory.getBeanDefinition(beanName);
