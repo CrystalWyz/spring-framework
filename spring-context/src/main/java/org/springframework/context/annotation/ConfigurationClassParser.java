@@ -333,7 +333,7 @@ class ConfigurationClassParser {
 		}
 
 		// Process any @Import annotations
-		// 处理@Import注解
+		// 处理@Import注解 导入额外的配置类，并实例化
 		processImports(configClass, sourceClass, getImports(sourceClass), filter, true);
 
 		// Process any @ImportResource annotations
