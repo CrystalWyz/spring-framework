@@ -426,7 +426,9 @@ final class PostProcessorRegistrationDelegate {
 			((AbstractBeanFactory) beanFactory).addBeanPostProcessors(postProcessors);
 		}
 		else {
+			// 遍历postProcessors
 			for (BeanPostProcessor postProcessor : postProcessors) {
+				// 将postProcessor添加到BeanFactory中的beanPostProcessors缓存
 				beanFactory.addBeanPostProcessor(postProcessor);
 			}
 		}
@@ -434,6 +436,7 @@ final class PostProcessorRegistrationDelegate {
 
 
 	/**
+	 * bean后置处理器，用来记录后置处理器实例化时的输出信息
 	 * BeanPostProcessor that logs an info message when a bean is created during
 	 * BeanPostProcessor instantiation, i.e. when a bean is not eligible for
 	 * getting processed by all BeanPostProcessors.
