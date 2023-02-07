@@ -597,11 +597,11 @@ public abstract class AbstractApplicationContext extends DefaultResourceLoader
 				onRefresh();
 
 				// Check for listener beans and register them.
-				// 注册监听器
+				// 在所有注册的bean中查找listener bean,注册到消息广播器中
 				registerListeners();
 
 				// Instantiate all remaining (non-lazy-init) singletons.
-				// 实例化操作（非懒加载单例）
+				// 初始化剩下的单实例（非懒加载单例）
 				finishBeanFactoryInitialization(beanFactory);
 
 				// Last step: publish corresponding event.
