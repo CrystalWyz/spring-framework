@@ -36,6 +36,8 @@ import org.springframework.util.ClassUtils;
 import org.springframework.util.ObjectUtils;
 
 /**
+ * 把基础类型，方法参数，属性，class等都进行封装描述
+ *
  * Contextual descriptor about a type to convert from or to.
  * <p>Capable of representing arrays and generic collection types.
  *
