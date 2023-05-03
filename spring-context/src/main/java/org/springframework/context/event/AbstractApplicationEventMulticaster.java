@@ -64,13 +64,17 @@ import org.springframework.util.ObjectUtils;
 public abstract class AbstractApplicationEventMulticaster
 		implements ApplicationEventMulticaster, BeanClassLoaderAware, BeanFactoryAware {
 
+	// 创建监听器助手类，用于存放应用程序的监听器集合，参数是是否预过滤监听器为false
 	private final DefaultListenerRetriever defaultRetriever = new DefaultListenerRetriever();
 
+	// ListenerCacheKey是基于事件类型作和源类型的类作为key用来存储监听器助手CachedListenerRetriever
 	final Map<ListenerCacheKey, CachedListenerRetriever> retrieverCache = new ConcurrentHashMap<>(64);
 
+	// 类加载器
 	@Nullable
 	private ClassLoader beanClassLoader;
 
+	// IOC容器工厂类
 	@Nullable
 	private ConfigurableBeanFactory beanFactory;
 
@@ -102,14 +106,19 @@ public abstract class AbstractApplicationEventMulticaster
 
 	@Override
 	public void addApplicationListener(ApplicationListener<?> listener) {
+		// 锁定监听器助手类对象
 		synchronized (this.defaultRetriever) {
 			// Explicitly remove target for a proxy, if registered already,
 			// in order to avoid double invocations of the same listener.
+			// 如果已经注册，则显示删除已经注册的监听器对象，为了避免调用重复的监听器对象
 			Object singletonTarget = AopProxyUtils.getSingletonTarget(listener);
 			if (singletonTarget instanceof ApplicationListener) {
+				// 删除
 				this.defaultRetriever.applicationListeners.remove(singletonTarget);
 			}
+			// 新增监听器对象
 			this.defaultRetriever.applicationListeners.add(listener);
+			// 清空监听器助手缓存map
 			this.retrieverCache.clear();
 		}
 	}
@@ -485,14 +494,19 @@ public abstract class AbstractApplicationEventMulticaster
 	 */
 	private class DefaultListenerRetriever {
 
+		// 存放应用程序事件监听器
 		public final Set<ApplicationListener<?>> applicationListeners = new LinkedHashSet<>();
 
+		// 存放应用程序事件监听器bean名称
 		public final Set<String> applicationListenerBeans = new LinkedHashSet<>();
 
+		// 获取应用程序的事件监听器
 		public Collection<ApplicationListener<?>> getApplicationListeners() {
+			// 创建一个指定大小的ApplicationListener监听器集合
 			List<ApplicationListener<?>> allListeners = new ArrayList<>(
 					this.applicationListeners.size() + this.applicationListenerBeans.size());
 			allListeners.addAll(this.applicationListeners);
+			// 如果存放监听器bean name集合不为空
 			if (!this.applicationListenerBeans.isEmpty()) {
 				BeanFactory beanFactory = getBeanFactory();
 				for (String listenerBeanName : this.applicationListenerBeans) {
