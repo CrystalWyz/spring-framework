@@ -187,21 +187,29 @@ public class DefaultSingletonBeanRegistry extends SimpleAliasRegistry implements
 	@Nullable
 	protected Object getSingleton(String beanName, boolean allowEarlyReference) {
 		// Quick check for existing instance without full singleton lock
-		// 检查缓存中是否存在实例 一级缓存
+		// 尝试从一级缓存中根据beanNam获取对应实例对象
 		Object singletonObject = this.singletonObjects.get(beanName);
+		// 如果单例对象中没有，并且该beanName对应的单例对象正在创建中
 		if (singletonObject == null && isSingletonCurrentlyInCreation(beanName)) {
+			// 从二级缓存中获取单例对象
 			singletonObject = this.earlySingletonObjects.get(beanName);
+			// 如果二级缓存中也没有，并且允许创建早期对象引用
 			if (singletonObject == null && allowEarlyReference) {
+				// 如果为空，则锁定全局进行处理
 				synchronized (this.singletonObjects) {
 					// Consistent creation of early reference within full singleton lock
 					singletonObject = this.singletonObjects.get(beanName);
 					if (singletonObject == null) {
 						singletonObject = this.earlySingletonObjects.get(beanName);
 						if (singletonObject == null) {
+							// 当某些方法需要提前初始化的时候则会调用addSingletonFactory方法将对应的ObjectFactory
 							ObjectFactory<?> singletonFactory = this.singletonFactories.get(beanName);
 							if (singletonFactory != null) {
+								// 如果存在单例工厂，则通过工厂创建一个单例对象
 								singletonObject = singletonFactory.getObject();
+								// 记录在缓存中，二级缓存和三级缓存的对象不能同时存在
 								this.earlySingletonObjects.put(beanName, singletonObject);
+								// 从三级缓存中移除
 								this.singletonFactories.remove(beanName);
 							}
 						}
@@ -236,6 +244,7 @@ public class DefaultSingletonBeanRegistry extends SimpleAliasRegistry implements
 				if (logger.isDebugEnabled()) {
 					logger.debug("Creating shared instance of singleton bean '" + beanName + "'");
 				}
+				// 记录当前对象的加载状态
 				beforeSingletonCreation(beanName);
 				boolean newSingleton = false;
 				boolean recordSuppressedExceptions = (this.suppressedExceptions == null);
@@ -360,6 +369,7 @@ public class DefaultSingletonBeanRegistry extends SimpleAliasRegistry implements
 	}
 
 	/**
+	 * 判断inCreationCheckExclusions和singletonsCurrentlyInCreation集合中是否包含当前beanName
 	 * Callback before singleton creation.
 	 * <p>The default implementation register the singleton as currently in creation.
 	 * @param beanName the name of the singleton about to be created
