@@ -302,7 +302,9 @@ public class CommonAnnotationBeanPostProcessor extends InitDestroyAnnotationBean
 
 	@Override
 	public void postProcessMergedBeanDefinition(RootBeanDefinition beanDefinition, Class<?> beanType, String beanName) {
+		// 处理@PostProcessor和@PreDestory注解
 		super.postProcessMergedBeanDefinition(beanDefinition, beanType, beanName);
+		// 处理@Resource
 		InjectionMetadata metadata = findResourceMetadata(beanName, beanType, null);
 		metadata.checkConfigMembers(beanDefinition);
 	}
@@ -312,6 +314,12 @@ public class CommonAnnotationBeanPostProcessor extends InitDestroyAnnotationBean
 		this.injectionMetadataCache.remove(beanName);
 	}
 
+	/**
+	 * 此方法的返回值为null，即不会在bean实例化之前产生一个对象
+	 * @param beanClass the class of the bean to be instantiated
+	 * @param beanName the name of the bean
+	 * @return
+	 */
 	@Override
 	public Object postProcessBeforeInstantiation(Class<?> beanClass, String beanName) {
 		return null;

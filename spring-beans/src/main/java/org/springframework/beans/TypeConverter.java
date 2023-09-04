@@ -38,6 +38,9 @@ import org.springframework.lang.Nullable;
 public interface TypeConverter {
 
 	/**
+	 * 将参数中的value转换成RequiredTypej类型
+	 * 从String到任何类型的转换通常使用PropertyEditor类的setAsText方法或ConversionService中的Spring Converter
+	 *
 	 * Convert the value to the required type (if necessary from a String).
 	 * <p>Conversions from String to any type will typically use the {@code setAsText}
 	 * method of the PropertyEditor class, or a Spring Converter in a ConversionService.
@@ -55,6 +58,8 @@ public interface TypeConverter {
 	<T> T convertIfNecessary(@Nullable Object value, @Nullable Class<T> requiredType) throws TypeMismatchException;
 
 	/**
+	 * 此方法跟上面方法是重载的实现，增加了作为转换目标的方法参数，主要用于分析泛型类型
+	 *
 	 * Convert the value to the required type (if necessary from a String).
 	 * <p>Conversions from String to any type will typically use the {@code setAsText}
 	 * method of the PropertyEditor class, or a Spring Converter in a ConversionService.

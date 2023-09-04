@@ -100,14 +100,17 @@ public class InitDestroyAnnotationBeanPostProcessor
 
 	protected transient Log logger = LogFactory.getLog(getClass());
 
+	// CommonAnnotationBeanPostProcessor在初始化时放置了@PostConstruct注解
 	@Nullable
 	private Class<? extends Annotation> initAnnotationType;
 
+	// CommonAnnotationBeanPostProcessor在初始化时放置了@PreDestory注解
 	@Nullable
 	private Class<? extends Annotation> destroyAnnotationType;
 
 	private int order = Ordered.LOWEST_PRECEDENCE;
 
+	// 生命周期的元数据缓存
 	@Nullable
 	private final transient Map<Class<?>, LifecycleMetadata> lifecycleMetadataCache = new ConcurrentHashMap<>(256);
 
@@ -146,10 +149,19 @@ public class InitDestroyAnnotationBeanPostProcessor
 
 	@Override
 	public void postProcessMergedBeanDefinition(RootBeanDefinition beanDefinition, Class<?> beanType, String beanName) {
+		// 调用方法获取生命周期元素并保存
 		LifecycleMetadata metadata = findLifecycleMetadata(beanType);
+		// 验证相关方法
 		metadata.checkConfigMembers(beanDefinition);
 	}
 
+	/**
+	 * 注册的生命周期元数据要开始调用了
+	 * @param bean the new bean instance
+	 * @param beanName the name of the bean
+	 * @return
+	 * @throws BeansException
+	 */
 	@Override
 	public Object postProcessBeforeInitialization(Object bean, String beanName) throws BeansException {
 		LifecycleMetadata metadata = findLifecycleMetadata(bean.getClass());
@@ -199,15 +211,21 @@ public class InitDestroyAnnotationBeanPostProcessor
 	private LifecycleMetadata findLifecycleMetadata(Class<?> clazz) {
 		if (this.lifecycleMetadataCache == null) {
 			// Happens after deserialization, during destruction...
+			// 在bean销毁过程中，反序列化后调用
 			return buildLifecycleMetadata(clazz);
 		}
 		// Quick check on the concurrent map first, with minimal locking.
+		// 首先尝试从缓存中获取元数据
 		LifecycleMetadata metadata = this.lifecycleMetadataCache.get(clazz);
+		// 如果从缓存中获取失败则尝试加锁获取元数据
 		if (metadata == null) {
 			synchronized (this.lifecycleMetadataCache) {
+				// 加锁后再次尝试获取元数据，防止多线程执行
 				metadata = this.lifecycleMetadataCache.get(clazz);
 				if (metadata == null) {
+					// 构建生命周期元数据
 					metadata = buildLifecycleMetadata(clazz);
+					// 将构建好的元数据放入缓存中
 					this.lifecycleMetadataCache.put(clazz, metadata);
 				}
 				return metadata;
@@ -216,6 +234,12 @@ public class InitDestroyAnnotationBeanPostProcessor
 		return metadata;
 	}
 
+	/**
+	 * 构造生命周期元数据（解析带@PostConstruct和@PreDestory注解的方法），当其构造完成后会将元数据缓存到lifecyclemetadataCache集合中并返回
+	 * 此时就完成了相关方法（初始化方法和销毁方法）的扫描解析和缓存工作
+	 * @param clazz
+	 * @return
+	 */
 	private LifecycleMetadata buildLifecycleMetadata(final Class<?> clazz) {
 		if (!AnnotationUtils.isCandidateClass(clazz, Arrays.asList(this.initAnnotationType, this.destroyAnnotationType))) {
 			return this.emptyLifecycleMetadata;
