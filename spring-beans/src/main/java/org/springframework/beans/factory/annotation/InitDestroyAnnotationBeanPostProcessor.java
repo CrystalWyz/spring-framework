@@ -245,17 +245,25 @@ public class InitDestroyAnnotationBeanPostProcessor
 			return this.emptyLifecycleMetadata;
 		}
 
+		// 实例化后的回调方法(@PostConstruct)
 		List<LifecycleElement> initMethods = new ArrayList<>();
+		// 销毁前的回调方法(@PreDestroy)
 		List<LifecycleElement> destroyMethods = new ArrayList<>();
+		// 获取正在处理的目标类
 		Class<?> targetClass = clazz;
 
 		do {
+			// 保存每一轮循环搜索到的相关方法
 			final List<LifecycleElement> currInitMethods = new ArrayList<>();
 			final List<LifecycleElement> currDestroyMethods = new ArrayList<>();
 
+			// 反射获取当前类中的所有方法并依次对其调用第二个参数的lambda形式
 			ReflectionUtils.doWithLocalMethods(targetClass, method -> {
+				// 当前方法的注解中包含initAnnotationType注解时(@PostConstruct)
 				if (this.initAnnotationType != null && method.isAnnotationPresent(this.initAnnotationType)) {
+					// 如果有，把它封装成lifecycleElement对象 存储起来
 					LifecycleElement element = new LifecycleElement(method);
+					// 将创建好的元素添加到集合中
 					currInitMethods.add(element);
 					if (logger.isTraceEnabled()) {
 						logger.trace("Found init method on class [" + clazz.getName() + "]: " + method);
@@ -269,12 +277,17 @@ public class InitDestroyAnnotationBeanPostProcessor
 				}
 			});
 
+			// 将本次循环中获取到的对应方法集合保存到总集合中
 			initMethods.addAll(0, currInitMethods);
+			// 销毁方法父类晚于子类
 			destroyMethods.addAll(currDestroyMethods);
+			// 获取当前类的父类
 			targetClass = targetClass.getSuperclass();
 		}
+		// 如果当前类存在父类且父类不为Object基类则循环对父类进行处理
 		while (targetClass != null && targetClass != Object.class);
 
+		// 有一个不为空就封装一个LifecycleMetadata对象，否则就返回空的emptyLifecycleMetadata
 		return (initMethods.isEmpty() && destroyMethods.isEmpty() ? this.emptyLifecycleMetadata :
 				new LifecycleMetadata(clazz, initMethods, destroyMethods));
 	}
@@ -318,11 +331,16 @@ public class InitDestroyAnnotationBeanPostProcessor
 			this.destroyMethods = destroyMethods;
 		}
 
+		/**
+		 * 将初始化和销毁的回调方法注册到beanDefinition中，并且标记已经检查过的方法，放入checkedInitMethods和checkDestroyMethods方法集合
+		 * @param beanDefinition
+		 */
 		public void checkConfigMembers(RootBeanDefinition beanDefinition) {
 			Set<LifecycleElement> checkedInitMethods = new LinkedHashSet<>(this.initMethods.size());
 			for (LifecycleElement element : this.initMethods) {
 				String methodIdentifier = element.getIdentifier();
 				if (!beanDefinition.isExternallyManagedInitMethod(methodIdentifier)) {
+					// 注册初始化调用方法
 					beanDefinition.registerExternallyManagedInitMethod(methodIdentifier);
 					checkedInitMethods.add(element);
 					if (logger.isTraceEnabled()) {
@@ -334,6 +352,7 @@ public class InitDestroyAnnotationBeanPostProcessor
 			for (LifecycleElement element : this.destroyMethods) {
 				String methodIdentifier = element.getIdentifier();
 				if (!beanDefinition.isExternallyManagedDestroyMethod(methodIdentifier)) {
+					// 注册销毁调用方法
 					beanDefinition.registerExternallyManagedDestroyMethod(methodIdentifier);
 					checkedDestroyMethods.add(element);
 					if (logger.isTraceEnabled()) {
@@ -345,6 +364,12 @@ public class InitDestroyAnnotationBeanPostProcessor
 			this.checkedDestroyMethods = checkedDestroyMethods;
 		}
 
+		/**
+		 * 调用前面注册的初始化集合checkedInitMethods的每一个方法
+		 * @param target
+		 * @param beanName
+		 * @throws Throwable
+		 */
 		public void invokeInitMethods(Object target, String beanName) throws Throwable {
 			Collection<LifecycleElement> checkedInitMethods = this.checkedInitMethods;
 			Collection<LifecycleElement> initMethodsToIterate =

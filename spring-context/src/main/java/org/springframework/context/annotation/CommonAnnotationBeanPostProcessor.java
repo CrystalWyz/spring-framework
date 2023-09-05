@@ -159,15 +159,18 @@ public class CommonAnnotationBeanPostProcessor extends InitDestroyAnnotationBean
 	private static final Class<? extends Annotation> ejbClass;
 
 	static {
+		// 添加@Resource注解
 		resourceAnnotationTypes.add(Resource.class);
 
 		webServiceRefClass = loadAnnotationType("javax.xml.ws.WebServiceRef");
 		if (webServiceRefClass != null) {
+			// 添加@WebServiceRef注解
 			resourceAnnotationTypes.add(webServiceRefClass);
 		}
 
 		ejbClass = loadAnnotationType("javax.ejb.EJB");
 		if (ejbClass != null) {
+			// 添加@EJB注解
 			resourceAnnotationTypes.add(ejbClass);
 		}
 	}
