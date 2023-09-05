@@ -1329,51 +1329,92 @@ public class DefaultListableBeanFactory extends AbstractAutowireCapableBeanFacto
 	public Object resolveDependency(DependencyDescriptor descriptor, @Nullable String requestingBeanName,
 			@Nullable Set<String> autowiredBeanNames, @Nullable TypeConverter typeConverter) throws BeansException {
 
+		// 获取工厂的参数名发现其，设置到descriptor中，是的descriptor初始化基础方法参数的参数名发现。此时，该方法实际上
+		// 并没有尝试检索参数名称；它仅允许发现在应用程序调用getDependencyName时发生
 		descriptor.initParameterNameDiscovery(getParameterNameDiscoverer());
+		// 如果descriptor的依赖类型为Optional类
 		if (Optional.class == descriptor.getDependencyType()) {
+			// 创建Optional类型的符合descriptor要求的候选Bean对象
 			return createOptionalDependency(descriptor, requestingBeanName);
 		}
+		// 是对象工厂类型或者对象提供者
 		else if (ObjectFactory.class == descriptor.getDependencyType() ||
 				ObjectProvider.class == descriptor.getDependencyType()) {
+			// DependencyObjectProvider：依赖对象提供者，用于延迟解析依赖项
+			// 新建一个Dependency object Provider的实例
 			return new DependencyObjectProvider(descriptor, requestingBeanName);
 		}
+		// javaxInjectProviderClass有可能导致空指针，不过一般情况下，我们引用Spring包的时候都有引入该类以防止空旨在
+		// 如果依赖类型是javax.inject.Provider类
 		else if (javaxInjectProviderClass == descriptor.getDependencyType()) {
+			// Jse330Provider：javax，inject.Provider实现类.与DependencyObjectProvider作用一样，也是用于延迟解析依赖
+			// 项，但它是使用javax.inject.Provider作为依赖对象，以减少与Spring的耦合
+			// 新建一个专门用于构建java x.inject.Provider对象的工厂来构建创建Jse330Provider对象
 			return new Jsr330Factory().createDependencyProvider(descriptor, requestingBeanName);
 		}
 		else {
+			// 尝试获取延迟加载代理对象
 			Object result = getAutowireCandidateResolver().getLazyResolutionProxyIfNecessary(
 					descriptor, requestingBeanName);
+			// 如果result为null，即表示在需要得到候选Bean对象
 			if (result == null) {
+				// 解析出于descriptor所包装的对象匹配的候选Bean对象
 				result = doResolveDependency(descriptor, requestingBeanName, autowiredBeanNames, typeConverter);
 			}
+			// 将与descriptor所包装的对象匹配的候选Bean对象result返回
 			return result;
 		}
 	}
 
+	/**
+	 * 解析出与descriptor所包装的对象匹配的候选Bean对象
+	 * @param descriptor
+	 * @param beanName
+	 * @param autowiredBeanNames
+	 * @param typeConverter
+	 * @return
+	 * @throws BeansException
+	 */
 	@Nullable
 	public Object doResolveDependency(DependencyDescriptor descriptor, @Nullable String beanName,
 			@Nullable Set<String> autowiredBeanNames, @Nullable TypeConverter typeConverter) throws BeansException {
 
+		// 设置新的当前切入点对象， 得到旧的当前切入对象
 		InjectionPoint previousInjectionPoint = ConstructorResolver.setCurrentInjectionPoint(descriptor);
 		try {
+			// 尝试使用descriptor的快捷方法得到最近候选Bean对象
+			// resolve Shortcut：解决针对给定工厂的这种依赖关系的快捷方式，例如，考虑一些预先解决的信息
+			// 尝试调用该工厂解决这种依赖关系的快捷方式来获取bean Name对应的bean对象，默认返回null
+			// 获取针对该工厂的这种依赖关系的快捷解析最佳候选Bean对象
 			Object shortcut = descriptor.resolveShortcut(this);
+			// 如果shortcut不为null，返回该shortcut
 			if (shortcut != null) {
 				return shortcut;
 			}
 
+			// 获取descriptor的依赖类型
 			Class<?> type = descriptor.getDependencyType();
+			// 尝试使用descriptor的默认值作为最近候选Bean对象
+			// 使用此BeanFactory的自动装配候选解析器获取descriptor的默认值
 			Object value = getAutowireCandidateResolver().getSuggestedValue(descriptor);
 			if (value != null) {
+				// 如果value是String类型
 				if (value instanceof String) {
+					//解析嵌套的值（如果value是表达式会解析出该表达式的值）
 					String strVal = resolveEmbeddedValue((String) value);
+					// 获取beanName的合并后RootBeanDefinition
 					BeanDefinition bd = (beanName != null && containsBean(beanName) ?
 							getMergedBeanDefinition(beanName) : null);
+					//评估bd中包含的value，如果strVal是可解析表达式，会对其进行解析。
 					value = evaluateBeanDefinitionString(strVal, bd);
 				}
+				//如果没有传入typeConverter，则引用工厂的类型转换器
 				TypeConverter converter = (typeConverter != null ? typeConverter : getTypeConverter());
 				try {
+					// 将value转换为type的实例对象
 					return converter.convertIfNecessary(value, type, descriptor.getTypeDescriptor());
 				}
+				// 捕捉不支持操作异常
 				catch (UnsupportedOperationException ex) {
 					// A custom TypeConverter which does not support TypeDescriptor resolution...
 					return (descriptor.getField() != null ?
@@ -1382,63 +1423,102 @@ public class DefaultListableBeanFactory extends AbstractAutowireCapableBeanFacto
 				}
 			}
 
+			//尝试针对desc ip tor所包装的对象类型是[stream，数组，Collection类型且对象类型是接口，Map]的情况，进行解析与依赖类
+			// 针对desc ip tor所包装的对象类型是[stream，数组，coLLection类型且对象类型是接口，Map的情况，进行解析与依赖类型匹
+			// 并将其封装成相应的依赖类型对象
 			Object multipleBeans = resolveMultipleBeans(descriptor, beanName, autowiredBeanNames, typeConverter);
+			// 如果multipleBeans不为null
 			if (multipleBeans != null) {
+				// 将multipleBeans返回
 				return multipleBeans;
 			}
 
+			// 尝试与type匹配的唯一候选bean对象
+			// 查找与type匹配的候选bean对象，构建成Map，key=bean名，val=Bean对象
 			Map<String, Object> matchingBeans = findAutowireCandidates(beanName, type, descriptor);
+			// 如果没有候选bean对象
 			if (matchingBeans.isEmpty()) {
+				// 如果descriptor需要注入
 				if (isRequired(descriptor)) {
+					//抛出NoSuchBeanDefinitionException或BeanNotOfRequiredTypeException以解决不可解决的依赖关系
 					raiseNoMatchingBeanFound(type, descriptor.getResolvableType(), descriptor);
 				}
+				// 返回null，表示没有找到候选bean对象
 				return null;
 			}
 
+			// 定义用于存储唯一的候选Bean名变量
 			String autowiredBeanName;
+			// 定义用于存储唯一的候选Bean对象变量
 			Object instanceCandidate;
 
+			// 如果候选Bean对象Map不止有一个
 			if (matchingBeans.size() > 1) {
+				// 确定candidates中可以自动注入的最佳候选Bean名称
 				autowiredBeanName = determineAutowireCandidate(matchingBeans, descriptor);
+				//如果autowiredBeanName为null
 				if (autowiredBeanName == null) {
+					//descriptor需要注入或者type不是数组/集合类型
 					if (isRequired(descriptor) || !indicatesMultipleBeans(type)) {
+						//让descriptor尝试选择其中一个实例，默认实现是抛出NoUniqueBeanDefinitionException
 						return descriptor.resolveNotUnique(descriptor.getResolvableType(), matchingBeans);
 					}
 					else {
 						// In case of an optional Collection/Map, silently ignore a non-unique case:
 						// possibly it was meant to be an empty collection of multiple regular beans
 						// (before 4.3 in particular when we didn't even look for collection beans).
+						//如果是可选的collection/Map，则静默忽略一个非唯一情况：
+						// 可能是多个常规bean的空集合
+						// （尤其是在4.3之前，设置在我们没有寻找collection bean的时候）
 						return null;
 					}
 				}
+				//获取autoWiredBeanName对应的候选Bean对象
 				instanceCandidate = matchingBeans.get(autowiredBeanName);
 			}
 			else {
 				// We have exactly one match.
+				// 这个时候matching Beans不会没有元素的，因为前面已经检查了
+				// 获取machingBeans唯一的元素
 				Map.Entry<String, Object> entry = matchingBeans.entrySet().iterator().next();
+				// 让autoWireBeanName引用该元素的候选bean名
 				autowiredBeanName = entry.getKey();
+				// 让instanceCandidate引用该元素的候选bean对象
 				instanceCandidate = entry.getValue();
 			}
 
+			// 如果候选bean名不为null
 			if (autowiredBeanNames != null) {
+				// 将autoWiredBeanName添加到autoWiredBeanNames中，又添加一次
 				autowiredBeanNames.add(autowiredBeanName);
 			}
+			// 如果instanceCandidate是Class实例
 			if (instanceCandidate instanceof Class) {
+				// 让instanceCandidate引用descriptor对autowiredBeanName解析为该工厂的Bean实例
 				instanceCandidate = descriptor.resolveCandidate(autowiredBeanName, type, this);
 			}
+			// 定义一个result变量，用于存储最佳候选Bean对象
 			Object result = instanceCandidate;
+			// 如果result是NullBean的实例
 			if (result instanceof NullBean) {
+				// 如果descriptor需要注入
 				if (isRequired(descriptor)) {
+					// 抛出NoSuchBeanDefinition or BeanNOtOfRequiredTypeException以解决不可解决的依赖关系
 					raiseNoMatchingBeanFound(type, descriptor.getResolvableType(), descriptor);
 				}
+				// 返回null 表示找不到最佳候选bean对象
 				result = null;
 			}
+			// 如果result不是type实例
 			if (!ClassUtils.isAssignableValue(type, result)) {
+				// 抛出Bean不是必须类型异常
 				throw new BeanNotOfRequiredTypeException(autowiredBeanName, type, instanceCandidate.getClass());
 			}
+			// 返回最佳候选Bean对象
 			return result;
 		}
 		finally {
+			// 设置上一个切入点对象
 			ConstructorResolver.setCurrentInjectionPoint(previousInjectionPoint);
 		}
 	}
