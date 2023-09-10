@@ -108,53 +108,96 @@ class BeanDefinitionValueResolver {
 	public Object resolveValueIfNecessary(Object argName, @Nullable Object value) {
 		// We must check each value to see whether it requires a runtime reference
 		// to another bean to be resolved.
+		// 我们必须检查每一个值，以查看它是否需要对另一个bean的运行时引用才能解决
+		// RuntimeBeanReference：当属性值对象是工厂中另一个bean的引用时，使用不可变的占位符类，在运行时进行解析
+		// 如果values是RuntimeBeanReference类型，那么就是引用类型，需要解析
 		if (value instanceof RuntimeBeanReference) {
+			// 将value强转为RuntimeBeanReference类型
 			RuntimeBeanReference ref = (RuntimeBeanReference) value;
+			// 解析出对应ref所封装的bean元信息(即Bean名，Bean类型)的Bean对象
 			return resolveReference(argName, ref);
 		}
+		// RuntimeBeanNameReference对应于<idref bean="bea" />
+		// idref注入的是目标bean的id而不是对应bean的实例，同时使用idref容器在部署的时候还会验证这个名称的bean
+		// 是否真实存在，其实idref就跟value一样，只是将某个字符串注入到属性或者构造函数中，只不过注入的是某个
+		// Bean实例的id属性：
+		// 即<idref bean="bea" />等价于<value>bea</value>
+		// 如果values是RuntimeBeanNameReference实例
 		else if (value instanceof RuntimeBeanNameReference) {
+			// 从value中获取引用的Bean名称
 			String refName = ((RuntimeBeanNameReference) value).getBeanName();
+			// 对refName进行解析，然后重新赋值给refName
 			refName = String.valueOf(doEvaluate(refName));
+			// 如果该工厂bean不包含具有refName的beanDefinition或外部注册的singleton实例
 			if (!this.beanFactory.containsBean(refName)) {
+				// 抛出BeanDefinitionStoreException存储异常：argName的Bean引用中的Bean名‘refName’无效
 				throw new BeanDefinitionStoreException(
 						"Invalid bean name '" + refName + "' in bean reference for " + argName);
 			}
+			// 返回经过解析且经过检查其是否存在于Bean工厂的引用Bean名[refName]
 			return refName;
 		}
+		// BeanDefinitionHolder:具有名称和别名的bean定义的持有者，可以注册为内部bean占位符
+		// 如果values是BeanDefinitionHolder实例
 		else if (value instanceof BeanDefinitionHolder) {
 			// Resolve BeanDefinitionHolder: contains BeanDefinition with name and aliases.
+			// 解析BeanDefinitionHolder：包含具有名称和别名的BeanDefinition。
+			// 将value强转为BeanDefinitionHolder类型
 			BeanDefinitionHolder bdHolder = (BeanDefinitionHolder) value;
+			// 根据bdHolder所封装的Bean名和BeanDefinition对象解析出内部Bean对象
 			return resolveInnerBean(argName, bdHolder.getBeanName(), bdHolder.getBeanDefinition());
 		}
+		// 一般在内部匿名Bean的配置才会出现BeanDefinition
+		// 如果values是BeanDefinition实例
 		else if (value instanceof BeanDefinition) {
 			// Resolve plain BeanDefinition, without contained name: use dummy name.
+			// 解析纯BeanDefinition，不包含名称：使用虚拟名称。
+			// 将value强转为BeanDefinition类型
 			BeanDefinition bd = (BeanDefinition) value;
+			// 拼装内部的Bean名: (inner bean)# + BeanDefinition的哈希码
 			String innerBeanName = "(inner bean)" + BeanFactoryUtils.GENERATED_BEAN_NAME_SEPARATOR +
 					ObjectUtils.getIdentityHexString(bd);
+			// 根据innerBeanName和BeanDefinition对象解析出内部Bean对象
 			return resolveInnerBean(argName, innerBeanName, bd);
 		}
+		// 如果values是DependencyDescriptor实例
 		else if (value instanceof DependencyDescriptor) {
+			// 定义一个用于存放所找到的所有候选Bean名称的集合，初始化长度为4
 			Set<String> autowiredBeanNames = new LinkedHashSet<>(4);
+			// 根据descriptor的依赖类型解析出与descriptor所包装的对象匹配的候选Bean对象
 			Object result = this.beanFactory.resolveDependency(
 					(DependencyDescriptor) value, this.beanName, autowiredBeanNames, this.typeConverter);
+			// 遍历autowiredBeanNames集合
 			for (String autowiredBeanName : autowiredBeanNames) {
+				// 如果该bean工厂包含具有autowiredBeanName的beanDefinition或外部注册的singleton实例
 				if (this.beanFactory.containsBean(autowiredBeanName)) {
+					// 注册autowiredBeanName为与beanName的依赖关系
 					this.beanFactory.registerDependentBean(autowiredBeanName, this.beanName);
 				}
 			}
+			// 返回与descriptor所包装的对象匹配的候选Bean对象
 			return result;
 		}
+		// 如果values是ManagedArray实例
 		else if (value instanceof ManagedArray) {
 			// May need to resolve contained runtime references.
+			// 可能需要包含的运行时引用，将value强转为ManagedArray类型
 			ManagedArray array = (ManagedArray) value;
+			// 获取array的已解析的元素类型
 			Class<?> elementType = array.resolvedElementType;
+			// 如果elementType为null
 			if (elementType == null) {
+				// 获取array的元素类型名，指array标签的value-type属性
 				String elementTypeName = array.getElementTypeName();
+				// 如果elementTypeName不为空
 				if (StringUtils.hasText(elementTypeName)) {
 					try {
+						// 使用Bean工厂的Bean类型加载器加载elementTypeName对应的Class对象
 						elementType = ClassUtils.forName(elementTypeName, this.beanFactory.getBeanClassLoader());
+						// 让array#resolvedElementType指向elementType
 						array.resolvedElementType = elementType;
 					}
+					// 捕捉加载elementTypeName对应的Class对象的所有异常
 					catch (Throwable ex) {
 						// Improve the message by showing the context.
 						throw new BeanCreationException(
@@ -163,55 +206,82 @@ class BeanDefinitionValueResolver {
 					}
 				}
 				else {
+					// 让elementType默认使用Object类型
 					elementType = Object.class;
 				}
 			}
+			// 解析managedArray对象，以得到解析后的数组对象
 			return resolveManagedArray(argName, (List<?>) value, elementType);
 		}
+		// 对ManagedList进行解析
 		else if (value instanceof ManagedList) {
 			// May need to resolve contained runtime references.
+			// 可能需要包含的运行时引用，解析ManagedList对象，以得到解析后的List对象并将结果返回
 			return resolveManagedList(argName, (List<?>) value);
 		}
+		// 对ManagedSet进行解析
 		else if (value instanceof ManagedSet) {
 			// May need to resolve contained runtime references.
+			// 可能需要包含的运行时引用，解析ManagedSet对象，以得到解析后的Set对象并将结果返回
 			return resolveManagedSet(argName, (Set<?>) value);
 		}
+		// 对ManagedMap进行解析
 		else if (value instanceof ManagedMap) {
 			// May need to resolve contained runtime references.
+			// 可能需要包含的运行时引用，解析ManagedMap对象，以得到解析后的Map对象并将结果返回
 			return resolveManagedMap(argName, (Map<?, ?>) value);
 		}
+		// 对ManagedProperties进行解析
 		else if (value instanceof ManagedProperties) {
+			// 将value强转为ManagedProperties类型
 			Properties original = (Properties) value;
+			// 定义一个用于存储将original中的key和value都解析后的Properties对象
 			Properties copy = new Properties();
+			// 遍历original中的每一个key和value
 			original.forEach((propKey, propValue) -> {
+				// 如果propKey是TypedStringValue实例
 				if (propKey instanceof TypedStringValue) {
+					// 在propKey封装的value可解析表达式情况下，将propKey封装的value评估为表达式并解析出表达式的值
 					propKey = evaluate((TypedStringValue) propKey);
 				}
+				// 如果propKey是TypedStringValue实例
 				if (propValue instanceof TypedStringValue) {
+					// 在propValue封装的value可解析表达式情况下，将propValue封装的value评估为表达式并解析出表达式的值
 					propValue = evaluate((TypedStringValue) propValue);
 				}
+				// 如果propKey或propValue为null
 				if (propKey == null || propValue == null) {
+					// 抛出Bean创建异常：转换argName的属性键/值出错：解析为null
 					throw new BeanCreationException(
 							this.beanDefinition.getResourceDescription(), this.beanName,
 							"Error converting Properties key/value pair for " + argName + ": resolved to null");
 				}
+				// 将propKey和propValue添加到copy中
 				copy.put(propKey, propValue);
 			});
 			return copy;
 		}
+		// 对TypedStringValue进行解析
 		else if (value instanceof TypedStringValue) {
 			// Convert value to target type here.
+			// 在此处将value转换为目标类型，将value强转为TypedStringValue类型
 			TypedStringValue typedStringValue = (TypedStringValue) value;
+			// 在typedStringValue封装的value可解析表达式情况下，将typedStringValue封装的value评估为表达式并解析出表达式的值
 			Object valueObject = evaluate(typedStringValue);
 			try {
+				// 在typedStringValue中解析目标类型
 				Class<?> resolvedTargetType = resolveTargetType(typedStringValue);
+				// 如果resolvedTargetType不为null
 				if (resolvedTargetType != null) {
+					// 使用typeConverter将valueObject转换为resolvedTargetType类型
 					return this.typeConverter.convertIfNecessary(valueObject, resolvedTargetType);
 				}
 				else {
+					// 返回并解析出表达式的值
 					return valueObject;
 				}
 			}
+			// 捕捉在解析目标或转换类型过程中抛出的异常
 			catch (Throwable ex) {
 				// Improve the message by showing the context.
 				throw new BeanCreationException(
@@ -219,10 +289,13 @@ class BeanDefinitionValueResolver {
 						"Error converting typed String value for " + argName, ex);
 			}
 		}
+		// 如果values是NullBean实例
 		else if (value instanceof NullBean) {
+			// 直接返回null
 			return null;
 		}
 		else {
+			// 对于value是String/String[]类型会尝试评估为表达式并解析出表达式的值，其他类型直接返回value
 			return evaluate(value);
 		}
 	}

@@ -1525,30 +1525,46 @@ public abstract class AbstractAutowireCapableBeanFactory extends AbstractBeanFac
 			}
 			// 遍历工厂内的所有后置处理器
 			for (InstantiationAwareBeanPostProcessor bp : getBeanPostProcessorCache().instantiationAware) {
+				// postProcessProperties:在工厂将给定的属性值应用到给定的bean之前，对给定的属性值进行后置处理，不需要任何属性扫描符。该回调方法在未来版本会被删掉
+				// 取而代之的是postProcessPropertyValues方法
+				// 让bp对pvs增加对bw的Bean对象的propertyValue,或编辑pvs的propertyValue
 				PropertyValues pvsToUse = bp.postProcessProperties(pvs, bw.getWrappedInstance(), beanName);
+				// 如果pvs为空
 				if (pvsToUse == null) {
+					// 如果filteredPds为空
 					if (filteredPds == null) {
+						// mbd.allowCaching:是否允许缓存，默认是允许的。缓存除了可以提高效率之外，还可以保证并发情况下，返回的PropertyDescriptor数组永远都是同一个
+						// 从bw提取一组经过筛选的PropertyDescriptor，排除忽略的依赖项或忽略项上的定义的属性
 						filteredPds = filterPropertyDescriptorsForDependencyCheck(bw, mbd.allowCaching);
 					}
-					// 对所有需要依赖检查的属性进行后置处理
+					// postProcessPropertyValues:一般进行检查所有依赖项是否都满足，例如基于“Require”注释在bean属性setter，
+					// 替换要应用的属性值，通常是通过基于原始的ProeprtyValues创建一个新的MutablePropertyValues实例，添加或者删除特定的值
+					// 返回的ProperyValues将应用于bw包装的bean实例的实际属性值（添加PropertyValues实例到pvs或者设置为null以跳过属性填充阶段）
+					// 回到bp的postProcessProperties方法
 					pvsToUse = bp.postProcessPropertyValues(pvs, filteredPds, bw.getWrappedInstance(), beanName);
+					// 如果pvsToUse为null，将终止该方法，以跳过属性填充
 					if (pvsToUse == null) {
 						return;
 					}
 				}
+				// 让pvs引用pvsToUse
 				pvs = pvsToUse;
 			}
 		}
+		// 如果需要依赖检查
 		if (needsDepCheck) {
+			// 如果filteredPds为空
 			if (filteredPds == null) {
+				// 从bw提取一组经过筛选的PropertyDescriptor，排除忽略的依赖项或忽略项上的定义的属性
 				filteredPds = filterPropertyDescriptorsForDependencyCheck(bw, mbd.allowCaching);
 			}
-			// 依赖检查，对应depends-on属性
+			// 依赖检查，主要检查pd的setter方法需要赋值时，pvs中没有满足其pd的需求的属性值可供赋值
 			checkDependencies(beanName, mbd, filteredPds, pvs);
 		}
 
+		// 如果pvs不为null
 		if (pvs != null) {
-			// 将属性应用到bean中
+			// 应用给定的属性值，解决任何在这个bean工厂中注册的依赖项，例如对其他bean的引用，必须使用深拷贝，所以我们不会永久地修改这个属性
 			applyPropertyValues(beanName, mbd, bw, pvs);
 		}
 	}
@@ -1790,31 +1806,41 @@ public abstract class AbstractAutowireCapableBeanFactory extends AbstractBeanFac
 	 * @param pvs the new property values
 	 */
 	protected void applyPropertyValues(String beanName, BeanDefinition mbd, BeanWrapper bw, PropertyValues pvs) {
+		// 为空，直接返回
 		if (pvs.isEmpty()) {
 			return;
 		}
 
+		// 如果有安全管理器，且bw是BeanWrapperImpl的实例
 		if (System.getSecurityManager() != null && bw instanceof BeanWrapperImpl) {
+			// 设置bw的安全上下文为工厂的访问控制上下文
 			((BeanWrapperImpl) bw).setSecurityContext(getAccessControlContext());
 		}
 
+		// MutablePropertyValues：PropertyValues默认实现，允许对属性进行简单操作，并提供构造函数来支持从映射进行深度复制和构造
 		MutablePropertyValues mpvs = null;
+		// 原始属性列表
 		List<PropertyValue> original;
 
+		// 如果pvs是MutablePropertyValues的实例
 		if (pvs instanceof MutablePropertyValues) {
 			mpvs = (MutablePropertyValues) pvs;
-			// 如果mpvs中的值已经被转换为对应的类型那么可以直接设置到beanwapper中
+			// isConverted()：返回该holder是否只包含转换后的值(true)，或者是否仍然需要转换这些值
+			// 如果mpvs中的值已经被转换为对应的类型那么可以直接设置到beanWapper中
 			if (mpvs.isConverted()) {
 				// Shortcut: use the pre-converted values as-is.
 				try {
+					// 已完成，直接返回
 					bw.setPropertyValues(mpvs);
 					return;
 				}
 				catch (BeansException ex) {
+					// 捕捉Bean异常，重新抛出BeanCreationException异常，错误设置属性值
 					throw new BeanCreationException(
 							mbd.getResourceDescription(), beanName, "Error setting property values", ex);
 				}
 			}
+			// 获取mpvs的propertyValue属性列表
 			original = mpvs.getPropertyValueList();
 		}
 		else {
@@ -1822,47 +1848,71 @@ public abstract class AbstractAutowireCapableBeanFactory extends AbstractBeanFac
 			original = Arrays.asList(pvs.getPropertyValues());
 		}
 
+		// 获取自定义类型转换器
 		TypeConverter converter = getCustomTypeConverter();
+		// 如果转换器为空，则直接把包装类赋值给converter
 		if (converter == null) {
 			converter = bw;
 		}
-		// 获取对应的解析器
+		// BeanDefinitionValueResolver：在bean工厂实现中使用Helper类，它将beanDefinition对象中包含的值解析为用户目标bean实例的实际值
 		BeanDefinitionValueResolver valueResolver = new BeanDefinitionValueResolver(this, beanName, mbd, converter);
 
 		// Create a deep copy, resolving any references for values.
-		// 为解析的值创建一个副本，副本的数据将会被注入到bean中
+		// 创建一个深拷贝，解析任何值的引用
 		List<PropertyValue> deepCopy = new ArrayList<>(original.size());
+		// 是否还需要解析标记
 		boolean resolveNecessary = false;
 		// 遍历属性，将属性转换为对应的对应属性的类型
 		for (PropertyValue pv : original) {
+			// 如果该属性已经解析过
 			if (pv.isConverted()) {
+				// 将pv添加到deepCopy中
 				deepCopy.add(pv);
 			}
+			// 如果属性没有被解析过
 			else {
+				// 获取属性的名字
 				String propertyName = pv.getName();
+				// 获取未经转换的值
 				Object originalValue = pv.getValue();
+				// AutowiredPropertyMarker.INSTANCE 自动生成标记的规范实例
 				if (originalValue == AutowiredPropertyMarker.INSTANCE) {
+					// 获取propertyName的setter方法
 					Method writeMethod = bw.getPropertyDescriptor(propertyName).getWriteMethod();
+					// 如果setter方法为空
 					if (writeMethod == null) {
+						// 抛出非法参数异常：自动装配标记的属性没有写方法
 						throw new IllegalArgumentException("Autowire marker for property without write method: " + pv);
 					}
+					// 将writeMethod封装成DependencyDescriptor对象
 					originalValue = new DependencyDescriptor(new MethodParameter(writeMethod, 0), true);
 				}
+				// 交由valueResolver根据pv解析出originalValue所封装的对象
 				Object resolvedValue = valueResolver.resolveValueIfNecessary(pv, originalValue);
+				// 默认转换后的值是刚解析出来的值
 				Object convertedValue = resolvedValue;
+				// 可转换标记：propertyName是否bw中的可写属性 && propertyName不是嵌套属性或索引属性（如果propertyName中有. || 或者[]就是嵌套属性或索引属性）
 				boolean convertible = bw.isWritableProperty(propertyName) &&
 						!PropertyAccessorUtils.isNestedOrIndexedProperty(propertyName);
+				// 如果可转换
 				if (convertible) {
+					// 将resolvedValue转换为指定目标属性对象
 					convertedValue = convertForProperty(resolvedValue, propertyName, bw, converter);
 				}
 				// Possibly store converted value in merged bean definition,
 				// in order to avoid re-conversion for every created bean instance.
+				// 可以将转换后的值存储在合并的bean定义中，以避免为每个创建的bean实例重新转换
+				// 如果resolvedValue与originalValue是同一个对象
 				if (resolvedValue == originalValue) {
+					// 如果可转换
 					if (convertible) {
+						// 将convertedValue设置到pv中
 						pv.setConvertedValue(convertedValue);
 					}
+					// 将pv添加到deepCopy中
 					deepCopy.add(pv);
 				}
+				// TypedStringValue：类型字符串的Holder，这个Holder将只存储字符串和目标类型，实际的转换将由Bean工厂执行
 				else if (convertible && originalValue instanceof TypedStringValue &&
 						!((TypedStringValue) originalValue).isDynamic() &&
 						!(convertedValue instanceof Collection || ObjectUtils.isArray(convertedValue))) {
