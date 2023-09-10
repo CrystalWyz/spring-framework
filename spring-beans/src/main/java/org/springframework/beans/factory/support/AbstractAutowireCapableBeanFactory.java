@@ -1510,14 +1510,20 @@ public abstract class AbstractAutowireCapableBeanFactory extends AbstractBeanFac
 
 		// 工厂是否拥有InstantiationAwareBeanPostProcessor
 		boolean hasInstAwareBpps = hasInstantiationAwareBeanPostProcessors();
+		// mbd.getDependencyCheck(), 默认返回DEPENDENCY_CHECK_NONE，表示不检查
 		// 需要依赖检查
 		boolean needsDepCheck = (mbd.getDependencyCheck() != AbstractBeanDefinition.DEPENDENCY_CHECK_NONE);
 
+		// 经过筛选的PropertyDescriptor数组，存放着排除忽略的依赖项或忽略项上的定义的属性
 		PropertyDescriptor[] filteredPds = null;
+		// 如果工厂拥有InstallationAwareBeanPostProcessor
 		if (hasInstAwareBpps) {
+			// 如果pvs为null
 			if (pvs == null) {
+				// 尝试获取mbd的PropertyValues
 				pvs = mbd.getPropertyValues();
 			}
+			// 遍历工厂内的所有后置处理器
 			for (InstantiationAwareBeanPostProcessor bp : getBeanPostProcessorCache().instantiationAware) {
 				PropertyValues pvsToUse = bp.postProcessProperties(pvs, bw.getWrappedInstance(), beanName);
 				if (pvsToUse == null) {

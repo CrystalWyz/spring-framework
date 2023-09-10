@@ -1006,7 +1006,9 @@ public abstract class AbstractBeanFactory extends FactoryBeanRegistrySupport imp
 		if (bpCache == null) {
 			bpCache = new BeanPostProcessorCache();
 			for (BeanPostProcessor bp : this.beanPostProcessors) {
+				// 如果bp是InstantiationAwareBeanPostProcessor 的实例
 				if (bp instanceof InstantiationAwareBeanPostProcessor) {
+					// 将bp添加到bpCache.instantiationAware集合中
 					bpCache.instantiationAware.add((InstantiationAwareBeanPostProcessor) bp);
 					if (bp instanceof SmartInstantiationAwareBeanPostProcessor) {
 						bpCache.smartInstantiationAware.add((SmartInstantiationAwareBeanPostProcessor) bp);
