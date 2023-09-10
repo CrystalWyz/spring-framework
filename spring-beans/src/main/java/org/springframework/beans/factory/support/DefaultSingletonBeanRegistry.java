@@ -163,8 +163,11 @@ public class DefaultSingletonBeanRegistry extends SimpleAliasRegistry implements
 		Assert.notNull(singletonFactory, "Singleton factory must not be null");
 		synchronized (this.singletonObjects) {
 			if (!this.singletonObjects.containsKey(beanName)) {
+				// 放到单例工厂里
 				this.singletonFactories.put(beanName, singletonFactory);
+				// 删除早期单例
 				this.earlySingletonObjects.remove(beanName);
+				// 添加到已注册的单例集合中
 				this.registeredSingletons.add(beanName);
 			}
 		}
@@ -430,23 +433,30 @@ public class DefaultSingletonBeanRegistry extends SimpleAliasRegistry implements
 	}
 
 	/**
+	 * 注册beanName 与 dependentBeanName 依赖关系
 	 * Register a dependent bean for the given bean,
 	 * to be destroyed before the given bean is destroyed.
 	 * @param beanName the name of the bean
 	 * @param dependentBeanName the name of the dependent bean
 	 */
-	public void registerDependentBean(String beanName, String dependentBeanName) {
+	public void  registerDependentBean(String beanName, String dependentBeanName) {
+		// 获取name的最终别名或者是全类名
 		String canonicalName = canonicalName(beanName);
 
+		// 是有存储bean名到该bean名所要依赖的bean名的Map作为锁，保证线程安全
 		synchronized (this.dependentBeanMap) {
+			//获取canonicalName对应的用于存储依赖Bean名的Set集合，如果没有就创建一个LinkedHashSet，并与canonicalName绑定到dependentBeans中
 			Set<String> dependentBeans =
 					this.dependentBeanMap.computeIfAbsent(canonicalName, k -> new LinkedHashSet<>(8));
+			// 如果dependentBeans中已经包含了dependentBeanName，说明已经注册过了，直接返回
 			if (!dependentBeans.add(dependentBeanName)) {
 				return;
 			}
 		}
 
+		// 使用Bean依赖关系的Map作为锁，保证线程安全
 		synchronized (this.dependenciesForBeanMap) {
+			// 添加dependentBeanName依赖于canonicalName的映射关系到存储bean名到依赖于该bean名的Map中
 			Set<String> dependenciesForBean =
 					this.dependenciesForBeanMap.computeIfAbsent(dependentBeanName, k -> new LinkedHashSet<>(8));
 			dependenciesForBean.add(canonicalName);
