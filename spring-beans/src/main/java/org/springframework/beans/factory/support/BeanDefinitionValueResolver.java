@@ -307,8 +307,11 @@ class BeanDefinitionValueResolver {
 	 */
 	@Nullable
 	protected Object evaluate(TypedStringValue value) {
+		// 如果有必要(value封装的value可解析表达式)，则将value封装的value评估为表达式并解析出表达式的值
 		Object result = doEvaluate(value.getValue());
+		// 如果result与value封装的value不相等
 		if (!ObjectUtils.nullSafeEquals(result, value.getValue())) {
+			// 将value标记为动态，即包含一个表达式，因此不进行缓存
 			value.setDynamic();
 		}
 		return result;
@@ -350,10 +353,12 @@ class BeanDefinitionValueResolver {
 	 */
 	@Nullable
 	private Object doEvaluate(@Nullable String value) {
+	 	// 评估value，如果value是可解析表达式，则解析出表达式的值，否则直接返回value
 		return this.beanFactory.evaluateBeanDefinitionString(value, this.beanDefinition);
 	}
 
 	/**
+	 * 在给定的TypedStringValue中解析目标类型
 	 * Resolve the target type in the given TypedStringValue.
 	 * @param value the TypedStringValue to resolve
 	 * @return the resolved target type (or {@code null} if none specified)
@@ -362,7 +367,9 @@ class BeanDefinitionValueResolver {
 	 */
 	@Nullable
 	protected Class<?> resolveTargetType(TypedStringValue value) throws ClassNotFoundException {
+		// 如果value有携带目标类型
 		if (value.hasTargetType()) {
+			// 返回value的目标类型
 			return value.getTargetType();
 		}
 		return value.resolveTargetType(this.beanFactory.getBeanClassLoader());
@@ -425,28 +432,45 @@ class BeanDefinitionValueResolver {
 	 */
 	@Nullable
 	private Object resolveInnerBean(Object argName, String innerBeanName, BeanDefinition innerBd) {
+		// 定义一个用于保存innerBd域beanDefinition合并后的BeanDefinitoBeanDefinition对象的变量
 		RootBeanDefinition mbd = null;
 		try {
+			// 获取innerBd域beanDefinition合并后的BeanDefinitoBeanDefinition对象
 			mbd = this.beanFactory.getMergedBeanDefinition(innerBeanName, innerBd, this.beanDefinition);
 			// Check given bean name whether it is unique. If not already unique,
 			// add counter - increasing the counter until the name is unique.
+			// 检查给定的bean名称是否唯一。如果不是唯一的，请添加计数器-增加计数器，直到名称唯一。
+			// 解决内部bean名称冲突的问题
+			// 定义实际的内部Bean名称，初始为innerBeanName
 			String actualInnerBeanName = innerBeanName;
+			// 如果mbd是单例的
 			if (mbd.isSingleton()) {
+				// 调整innerbeanName，直到该Bean名称在工厂中唯一。最后将结果赋值给actualInnerBeanName
 				actualInnerBeanName = adaptInnerBeanName(innerBeanName);
 			}
+			// 将actualInnerBeanName和beanName的包含关系注册到工厂中
 			this.beanFactory.registerContainedBean(actualInnerBeanName, this.beanName);
 			// Guarantee initialization of beans that the inner bean depends on.
+			// 确保内部Bean依赖的bean的初始化，获取mbd的要依赖的Bean名称
 			String[] dependsOn = mbd.getDependsOn();
+			// 如果有需要依赖的Bean名称
 			if (dependsOn != null) {
+				// 遍历dependsOn
 				for (String dependsOnBean : dependsOn) {
+					// 注册dependsOnBean与actualInnerBeanName的依赖关系到该工厂中
 					this.beanFactory.registerDependentBean(dependsOnBean, actualInnerBeanName);
+					// 获取dependsOnBean的Bean对象(不引用，只是为了让dependsOnBean所对应的Bean对象实例化)
 					this.beanFactory.getBean(dependsOnBean);
 				}
 			}
 			// Actually create the inner bean instance now...
+			// 实际上现有创建内部bean实例，创建innerBeanName对应的Bean对象
 			Object innerBean = this.beanFactory.createBean(actualInnerBeanName, mbd, null);
+			// 如果innerBean是FactoryBean实例
 			if (innerBean instanceof FactoryBean) {
+				// mbds是否是"synthetic"的标记，一般是指只有AOP相关的prointCut配置或者Advice配置才会设置为true
 				boolean synthetic = mbd.isSynthetic();
+				// 从BeanFactory对象中获取管理的对象，只有mbd不是synthetic才对其对象进行该工厂的后置处理
 				innerBean = this.beanFactory.getObjectFromFactoryBean(
 						(FactoryBean<?>) innerBean, actualInnerBeanName, !synthetic);
 			}
@@ -471,11 +495,18 @@ class BeanDefinitionValueResolver {
 	 * @return the adapted name for the inner bean
 	 */
 	private String adaptInnerBeanName(String innerBeanName) {
+		// 定义一个内部Bean变量，初始为innerBean名
 		String actualInnerBeanName = innerBeanName;
+		// 定义一个用于计数的计数器，初始为0
 		int counter = 0;
+		// 获取前缀
 		String prefix = innerBeanName + BeanFactoryUtils.GENERATED_BEAN_NAME_SEPARATOR;
+		// 只要actualInnerBeanName在工厂中使用就继续循环，即actualInnerBeanName是否是别名
+		// 或该工厂是否已包含actualInnerBeanName的bean对象，或 该工厂是否已经为actualInnerBeanName注册类依赖Bean关系
 		while (this.beanFactory.isBeanNameInUse(actualInnerBeanName)) {
+			// 计数器+1
 			counter++;
+			// 让actualInnerBeanName重新引用凭借后的字符串：innerBeanName + # + counter
 			actualInnerBeanName = prefix + counter;
 		}
 		return actualInnerBeanName;
@@ -496,14 +527,18 @@ class BeanDefinitionValueResolver {
 	 * For each element in the managed list, resolve reference if necessary.
 	 */
 	private List<?> resolveManagedList(Object argName, List<?> ml) {
+		// 定义一个用于存放解析后的实例对象的ArrayList，初始化长度为ml.size()
 		List<Object> resolved = new ArrayList<>(ml.size());
+		// 遍历ml
 		for (int i = 0; i < ml.size(); i++) {
+			// 获取第i个ml元素对象，解析出该元素对象的实例对象然后添加到resolved中
 			resolved.add(resolveValueIfNecessary(new KeyedArgName(argName, i), ml.get(i)));
 		}
 		return resolved;
 	}
 
 	/**
+	 * 解析ManagedSet对象，以得到解析后的Set对象并将结果返回
 	 * For each element in the managed set, resolve reference if necessary.
 	 */
 	private Set<?> resolveManagedSet(Object argName, Set<?> ms) {
