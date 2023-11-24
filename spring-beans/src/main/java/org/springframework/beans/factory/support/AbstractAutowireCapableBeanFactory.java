@@ -669,6 +669,7 @@ public abstract class AbstractAutowireCapableBeanFactory extends AbstractBeanFac
 		}
 
 		if (earlySingletonExposure) {
+			// 从缓存中获取具体的对象
 			Object earlySingletonReference = getSingleton(beanName, false);
 			// earlySingletonReference只有在检测到有循环依赖的情况下才不为空
 			if (earlySingletonReference != null) {
@@ -681,9 +682,12 @@ public abstract class AbstractAutowireCapableBeanFactory extends AbstractBeanFac
 					Set<String> actualDependentBeans = new LinkedHashSet<>(dependentBeans.length);
 					for (String dependentBean : dependentBeans) {
 						if (!removeSingletonIfCreatedForTypeCheckOnly(dependentBean)) {
+							// 返回false说明依赖还未实例化完成
 							actualDependentBeans.add(dependentBean);
 						}
 					}
+					// 因为bean创建后所依赖的bean一定是已经创建的
+					// actualDependentBeans不为空则表示当前bean创建后其依赖的bean缺没有全部创建完，也就是说存在循环依赖
 					if (!actualDependentBeans.isEmpty()) {
 						throw new BeanCurrentlyInCreationException(beanName,
 								"Bean with name '" + beanName + "' has been injected into other beans [" +
@@ -699,6 +703,7 @@ public abstract class AbstractAutowireCapableBeanFactory extends AbstractBeanFac
 
 		// Register bean as disposable.
 		try {
+			// 注册bean对象，方便后续在容器销毁的时候销毁对象
 			registerDisposableBeanIfNecessary(beanName, bean, mbd);
 		}
 		catch (BeanDefinitionValidationException ex) {
@@ -712,6 +717,7 @@ public abstract class AbstractAutowireCapableBeanFactory extends AbstractBeanFac
 	@Override
 	@Nullable
 	protected Class<?> predictBeanType(String beanName, RootBeanDefinition mbd, Class<?>... typesToMatch) {
+		// 确定给定bean定义的目标类型
 		Class<?> targetType = determineTargetType(beanName, mbd, typesToMatch);
 		// Apply SmartInstantiationAwareBeanPostProcessors to predict the
 		// eventual type after a before-instantiation shortcut.

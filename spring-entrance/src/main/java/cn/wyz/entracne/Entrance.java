@@ -10,7 +10,7 @@ import org.springframework.context.support.ClassPathXmlApplicationContext;
 public class Entrance {
 
 	public static void main(String[] args) {
-		ApplicationContext ac = new ClassPathXmlApplicationContext("application.xml");
+		ApplicationContext ac = new ClassPathXmlApplicationContext("application-${a:wyz}.xml");
 		Wyz bean = ac.getBean(Wyz.class);
 		System.out.println(bean);
 	}
