@@ -1,5 +1,5 @@
 /*
- * Copyright 2002-2021 the original author or authors.
+ * Copyright 2002-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,13 +16,13 @@
 
 package org.springframework.scheduling.support;
 
+import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.Year;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
-import java.time.temporal.ChronoField;
 import java.time.temporal.Temporal;
 
 import org.assertj.core.api.Condition;
@@ -30,6 +30,7 @@ import org.junit.jupiter.api.Test;
 
 import static java.time.DayOfWeek.FRIDAY;
 import static java.time.DayOfWeek.MONDAY;
+import static java.time.DayOfWeek.SATURDAY;
 import static java.time.DayOfWeek.SUNDAY;
 import static java.time.DayOfWeek.THURSDAY;
 import static java.time.DayOfWeek.TUESDAY;
@@ -42,17 +43,17 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 class CronExpressionTests {
 
-	private static final Condition<Temporal> weekday = new Condition<Temporal>("weekday") {
+	private static final Condition<Temporal> weekday = new Condition<>("weekday") {
 
 		@Override
 		public boolean matches(Temporal value) {
-			int dayOfWeek = value.get(ChronoField.DAY_OF_WEEK);
-			return dayOfWeek != 6 && dayOfWeek != 7;
+			DayOfWeek dayOfWeek = DayOfWeek.from(value);
+			return dayOfWeek != SATURDAY && dayOfWeek != SUNDAY;
 		}
 	};
 
 	@Test
-	public void isValidExpression() {
+	void isValidExpression() {
 		assertThat(CronExpression.isValidExpression(null)).isFalse();
 		assertThat(CronExpression.isValidExpression("")).isFalse();
 		assertThat(CronExpression.isValidExpression("*")).isFalse();
@@ -478,7 +479,7 @@ class CronExpressionTests {
 	}
 
 	@Test
-	public void fixedDays() {
+	void fixedDays() {
 		CronExpression expression = CronExpression.parse("0 0 0 29 2 WED");
 
 		LocalDateTime last = LocalDateTime.of(2012, 2, 29, 1, 0);
@@ -508,7 +509,7 @@ class CronExpressionTests {
 	}
 
 	@Test
-	public void everyTenDays() {
+	void everyTenDays() {
 		CronExpression cronExpression = CronExpression.parse("0 15 12 */10 1-8 5");
 
 		LocalDateTime last = LocalDateTime.parse("2021-04-30T12:14:59");
@@ -805,7 +806,7 @@ class CronExpressionTests {
 	}
 
 	@Test
-	public void quartzLastDayOfWeekOffset() {
+	void quartzLastDayOfWeekOffset() {
 		// last Friday (5) of the month
 		CronExpression expression = CronExpression.parse("0 0 0 * * 5L");
 
@@ -954,6 +955,24 @@ class CronExpressionTests {
 
 		last = actual;
 		expected = LocalDateTime.of(2020, 4, 1, 0, 0);
+		actual = expression.next(last);
+		assertThat(actual).isNotNull();
+		assertThat(actual).isEqualTo(expected);
+		assertThat(actual).is(weekday);
+
+		last = LocalDateTime.of(2022, 1, 1, 0, 0);
+		assertThat(last.getDayOfWeek()).isEqualTo(SATURDAY);
+		expected = LocalDateTime.of(2022, 1, 3, 0, 0);
+		assertThat(expected.getDayOfWeek()).isEqualTo(MONDAY);
+		actual = expression.next(last);
+		assertThat(actual).isNotNull();
+		assertThat(actual).isEqualTo(expected);
+		assertThat(actual).is(weekday);
+
+		last = LocalDateTime.of(2021, 8, 1, 0,0);
+		assertThat(last.getDayOfWeek()).isEqualTo(SUNDAY);
+		expected = LocalDateTime.of(2021, 8, 2, 0, 0);
+		assertThat(expected.getDayOfWeek()).isEqualTo(MONDAY);
 		actual = expression.next(last);
 		assertThat(actual).isNotNull();
 		assertThat(actual).isEqualTo(expected);
@@ -1276,7 +1295,7 @@ class CronExpressionTests {
 	}
 
 	@Test
-	public void sundayToFriday() {
+	void sundayToFriday() {
 		CronExpression expression = CronExpression.parse("0 0 0 ? * SUN-FRI");
 
 		LocalDateTime last = LocalDateTime.of(2021, 2, 25, 15, 0);
@@ -1295,7 +1314,7 @@ class CronExpressionTests {
 	}
 
 	@Test
-	public void daylightSaving() {
+	void daylightSaving() {
 		CronExpression cronExpression = CronExpression.parse("0 0 9 * * *");
 
 		ZonedDateTime last = ZonedDateTime.parse("2021-03-27T09:00:00+01:00[Europe/Amsterdam]");
@@ -1317,12 +1336,28 @@ class CronExpressionTests {
 		actual = cronExpression.next(last);
 		assertThat(actual).isNotNull();
 		assertThat(actual).isEqualTo(expected);
+
+		cronExpression = CronExpression.parse("0 5 0 * * *");
+
+		last = ZonedDateTime.parse("2021-03-28T01:00:00+01:00[Europe/Amsterdam]");
+		expected = ZonedDateTime.parse("2021-03-29T00:05+02:00[Europe/Amsterdam]");
+		actual = cronExpression.next(last);
+		assertThat(actual).isNotNull();
+		assertThat(actual).isEqualTo(expected);
+
+		cronExpression = CronExpression.parse("0 5 0 * * *");
+
+		last = ZonedDateTime.parse("2019-10-27T01:05+02:00[Europe/Amsterdam]");
+		expected = ZonedDateTime.parse("2019-10-28T00:05+01:00[Europe/Amsterdam]");
+		actual = cronExpression.next(last);
+		assertThat(actual).isNotNull();
+		assertThat(actual).isEqualTo(expected);
 	}
 
 	@Test
-	public void various() {
+	void various() {
 		CronExpression cronExpression = CronExpression.parse("3-57 13-28 17,18 1,15 3-12 6#1");
-		LocalDateTime last =     LocalDateTime.of(2022, 9, 15, 17, 44, 11);
+		LocalDateTime last = LocalDateTime.of(2022, 9, 15, 17, 44, 11);
 		LocalDateTime expected = LocalDateTime.of(2022, 10, 1, 17, 13, 3);
 		LocalDateTime actual = cronExpression.next(last);
 		assertThat(actual).isNotNull();

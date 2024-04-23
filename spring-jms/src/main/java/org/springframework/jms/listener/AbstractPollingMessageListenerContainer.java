@@ -1,5 +1,5 @@
 /*
- * Copyright 2002-2021 the original author or authors.
+ * Copyright 2002-2023 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,6 +16,7 @@
 
 package org.springframework.jms.listener;
 
+import io.micrometer.observation.Observation;
 import jakarta.jms.Connection;
 import jakarta.jms.Destination;
 import jakarta.jms.JMSException;
@@ -29,6 +30,7 @@ import org.springframework.jms.connection.SingleConnectionFactory;
 import org.springframework.jms.support.JmsUtils;
 import org.springframework.lang.Nullable;
 import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionException;
 import org.springframework.transaction.TransactionStatus;
 import org.springframework.transaction.support.DefaultTransactionDefinition;
 import org.springframework.transaction.support.ResourceTransactionManager;
@@ -187,9 +189,8 @@ public abstract class AbstractPollingMessageListenerContainer extends AbstractMe
 	public void initialize() {
 		// Set sessionTransacted=true in case of a non-JTA transaction manager.
 		if (!this.sessionTransactedCalled &&
-				this.transactionManager instanceof ResourceTransactionManager &&
-				!TransactionSynchronizationUtils.sameResourceFactory(
-						(ResourceTransactionManager) this.transactionManager, obtainConnectionFactory())) {
+				this.transactionManager instanceof ResourceTransactionManager rtm &&
+				!TransactionSynchronizationUtils.sameResourceFactory(rtm, obtainConnectionFactory())) {
 			super.setSessionTransacted(true);
 		}
 
@@ -248,7 +249,19 @@ public abstract class AbstractPollingMessageListenerContainer extends AbstractMe
 				rollbackOnException(this.transactionManager, status, ex);
 				throw ex;
 			}
-			this.transactionManager.commit(status);
+			try {
+				this.transactionManager.commit(status);
+			}
+			catch (TransactionException ex) {
+				// Propagate transaction system exceptions as infrastructure problems.
+				throw ex;
+			}
+			catch (RuntimeException ex) {
+				// Typically a late persistence exception from a listener-used resource
+				// -> handle it as listener exception, not as an infrastructure problem.
+				// E.g. a database locking failure should not lead to listener shutdown.
+				handleListenerException(ex);
+			}
 			return messageReceived;
 		}
 
@@ -302,19 +315,21 @@ public abstract class AbstractPollingMessageListenerContainer extends AbstractMe
 			}
 			Message message = receiveMessage(consumerToUse);
 			if (message != null) {
+				boolean exposeResource = (!transactional && isExposeListenerSession() &&
+						!TransactionSynchronizationManager.hasResource(obtainConnectionFactory()));
+				Observation observation = createObservation(message).start();
+				Observation.Scope scope = observation.openScope();
 				if (logger.isDebugEnabled()) {
 					logger.debug("Received message of type [" + message.getClass() + "] from consumer [" +
 							consumerToUse + "] of " + (transactional ? "transactional " : "") + "session [" +
 							sessionToUse + "]");
 				}
-				messageReceived(invoker, sessionToUse);
-				boolean exposeResource = (!transactional && isExposeListenerSession() &&
-						!TransactionSynchronizationManager.hasResource(obtainConnectionFactory()));
-				if (exposeResource) {
-					TransactionSynchronizationManager.bindResource(
-							obtainConnectionFactory(), new LocallyExposedJmsResourceHolder(sessionToUse));
-				}
 				try {
+					messageReceived(invoker, sessionToUse);
+					if (exposeResource) {
+						TransactionSynchronizationManager.bindResource(
+								obtainConnectionFactory(), new LocallyExposedJmsResourceHolder(sessionToUse));
+					}
 					doExecuteListener(sessionToUse, message);
 				}
 				catch (Throwable ex) {
@@ -324,17 +339,25 @@ public abstract class AbstractPollingMessageListenerContainer extends AbstractMe
 						}
 						status.setRollbackOnly();
 					}
-					handleListenerException(ex);
+					try {
+						handleListenerException(ex);
+					}
+					catch (Throwable throwable) {
+						observation.error(throwable);
+						throw throwable;
+					}
 					// Rethrow JMSException to indicate an infrastructure problem
 					// that may have to trigger recovery...
-					if (ex instanceof JMSException) {
-						throw (JMSException) ex;
+					if (ex instanceof JMSException jmsException) {
+						throw jmsException;
 					}
 				}
 				finally {
 					if (exposeResource) {
 						TransactionSynchronizationManager.unbindResource(obtainConnectionFactory());
 					}
+					observation.stop();
+					scope.close();
 				}
 				// Indicate that a message has been received.
 				return true;

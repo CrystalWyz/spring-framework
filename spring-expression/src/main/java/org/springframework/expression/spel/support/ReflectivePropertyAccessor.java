@@ -1,5 +1,5 @@
 /*
- * Copyright 2002-2021 the original author or authors.
+ * Copyright 2002-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -27,7 +27,15 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
+import kotlin.jvm.JvmClassMappingKt;
+import kotlin.reflect.KClass;
+import kotlin.reflect.KMutableProperty;
+import kotlin.reflect.KProperty;
+import kotlin.reflect.full.KClasses;
+import kotlin.reflect.jvm.ReflectJvmMapping;
+
 import org.springframework.asm.MethodVisitor;
+import org.springframework.core.KotlinDetector;
 import org.springframework.core.MethodParameter;
 import org.springframework.core.convert.Property;
 import org.springframework.core.convert.TypeDescriptor;
@@ -55,6 +63,7 @@ import org.springframework.util.StringUtils;
  * @author Juergen Hoeller
  * @author Phillip Webb
  * @author Sam Brannen
+ * @author Sebastien Deleuze
  * @since 3.0
  * @see StandardEvaluationContext
  * @see SimpleEvaluationContext
@@ -64,7 +73,7 @@ public class ReflectivePropertyAccessor implements PropertyAccessor {
 
 	private static final Set<Class<?>> ANY_TYPES = Collections.emptySet();
 
-	private static final Set<Class<?>> BOOLEAN_TYPES = Set.of(Boolean.class, Boolean.TYPE);
+	private static final Set<Class<?>> BOOLEAN_TYPES = Set.of(Boolean.class, boolean.class);
 
 	private final boolean allowWrite;
 
@@ -130,7 +139,7 @@ public class ReflectivePropertyAccessor implements PropertyAccessor {
 			// The readerCache will only contain gettable properties (let's not worry about setters for now).
 			Property property = new Property(type, method, null);
 			TypeDescriptor typeDescriptor = new TypeDescriptor(property);
-			method = ClassUtils.getInterfaceMethodIfPossible(method);
+			method = ClassUtils.getInterfaceMethodIfPossible(method, type);
 			this.readerCache.put(cacheKey, new InvokerPair(method, typeDescriptor));
 			this.typeDescriptorCache.put(cacheKey, typeDescriptor);
 			return true;
@@ -173,7 +182,7 @@ public class ReflectivePropertyAccessor implements PropertyAccessor {
 					// The readerCache will only contain gettable properties (let's not worry about setters for now).
 					Property property = new Property(type, method, null);
 					TypeDescriptor typeDescriptor = new TypeDescriptor(property);
-					method = ClassUtils.getInterfaceMethodIfPossible(method);
+					method = ClassUtils.getInterfaceMethodIfPossible(method, type);
 					invoker = new InvokerPair(method, typeDescriptor);
 					this.lastReadInvokerPair = invoker;
 					this.readerCache.put(cacheKey, invoker);
@@ -233,7 +242,7 @@ public class ReflectivePropertyAccessor implements PropertyAccessor {
 			// Treat it like a property
 			Property property = new Property(type, null, method);
 			TypeDescriptor typeDescriptor = new TypeDescriptor(property);
-			method = ClassUtils.getInterfaceMethodIfPossible(method);
+			method = ClassUtils.getInterfaceMethodIfPossible(method, type);
 			this.writerCache.put(cacheKey, method);
 			this.typeDescriptorCache.put(cacheKey, typeDescriptor);
 			return true;
@@ -282,7 +291,7 @@ public class ReflectivePropertyAccessor implements PropertyAccessor {
 			if (method == null) {
 				method = findSetterForProperty(name, type, target);
 				if (method != null) {
-					method = ClassUtils.getInterfaceMethodIfPossible(method);
+					method = ClassUtils.getInterfaceMethodIfPossible(method, type);
 					cachedMember = method;
 					this.writerCache.put(cacheKey, cachedMember);
 				}
@@ -329,7 +338,7 @@ public class ReflectivePropertyAccessor implements PropertyAccessor {
 		Class<?> type = (target instanceof Class<?> clazz ? clazz : target.getClass());
 
 		if (type.isArray() && name.equals("length")) {
-			return TypeDescriptor.valueOf(Integer.TYPE);
+			return TypeDescriptor.valueOf(int.class);
 		}
 		PropertyCacheKey cacheKey = new PropertyCacheKey(type, name, target instanceof Class);
 		TypeDescriptor typeDescriptor = this.typeDescriptorCache.get(cacheKey);
@@ -349,9 +358,11 @@ public class ReflectivePropertyAccessor implements PropertyAccessor {
 
 	@Nullable
 	private Method findGetterForProperty(String propertyName, Class<?> clazz, Object target) {
-		Method method = findGetterForProperty(propertyName, clazz, target instanceof Class);
-		if (method == null && target instanceof Class) {
-			method = findGetterForProperty(propertyName, target.getClass(), false);
+		boolean targetIsAClass = (target instanceof Class);
+		Method method = findGetterForProperty(propertyName, clazz, targetIsAClass);
+		if (method == null && targetIsAClass) {
+			// Fallback for getter instance methods in java.lang.Class.
+			method = findGetterForProperty(propertyName, Class.class, false);
 		}
 		return method;
 	}
@@ -359,9 +370,8 @@ public class ReflectivePropertyAccessor implements PropertyAccessor {
 	@Nullable
 	private Method findSetterForProperty(String propertyName, Class<?> clazz, Object target) {
 		Method method = findSetterForProperty(propertyName, clazz, target instanceof Class);
-		if (method == null && target instanceof Class) {
-			method = findSetterForProperty(propertyName, target.getClass(), false);
-		}
+		// In contrast to findGetterForProperty(), we do not look for setters in
+		// java.lang.Class as a fallback, since Class doesn't have any public setters.
 		return method;
 	}
 
@@ -400,7 +410,8 @@ public class ReflectivePropertyAccessor implements PropertyAccessor {
 		Method[] methods = getSortedMethods(clazz);
 		for (String methodSuffix : methodSuffixes) {
 			for (Method method : methods) {
-				if (isCandidateForProperty(method, clazz) && method.getName().equals(prefix + methodSuffix) &&
+				if (isCandidateForProperty(method, clazz) &&
+						(method.getName().equals(prefix + methodSuffix) || isKotlinProperty(method, methodSuffix)) &&
 						method.getParameterCount() == numberOfParams &&
 						(!mustBeStatic || Modifier.isStatic(method.getModifiers())) &&
 						(requiredReturnTypes.isEmpty() || requiredReturnTypes.contains(method.getReturnType()))) {
@@ -527,7 +538,7 @@ public class ReflectivePropertyAccessor implements PropertyAccessor {
 				method = findGetterForProperty(name, type, target);
 				if (method != null) {
 					TypeDescriptor typeDescriptor = new TypeDescriptor(new MethodParameter(method, -1));
-					method = ClassUtils.getInterfaceMethodIfPossible(method);
+					method = ClassUtils.getInterfaceMethodIfPossible(method, type);
 					invocationTarget = new InvokerPair(method, typeDescriptor);
 					ReflectionUtils.makeAccessible(method);
 					this.readerCache.put(cacheKey, invocationTarget);
@@ -556,23 +567,19 @@ public class ReflectivePropertyAccessor implements PropertyAccessor {
 		return this;
 	}
 
+	private static boolean isKotlinProperty(Method method, String methodSuffix) {
+		Class<?> clazz = method.getDeclaringClass();
+		return KotlinDetector.isKotlinReflectPresent() &&
+				KotlinDetector.isKotlinType(clazz) &&
+				KotlinDelegate.isKotlinProperty(method, methodSuffix);
+	}
+
 
 	/**
 	 * Captures the member (method/field) to call reflectively to access a property value
 	 * and the type descriptor for the value returned by the reflective call.
 	 */
-	private static class InvokerPair {
-
-		final Member member;
-
-		final TypeDescriptor typeDescriptor;
-
-		public InvokerPair(Member member, TypeDescriptor typeDescriptor) {
-			this.member = member;
-			this.typeDescriptor = typeDescriptor;
-		}
-	}
-
+	private record InvokerPair(Member member, TypeDescriptor typeDescriptor) {}
 
 	private static final class PropertyCacheKey implements Comparable<PropertyCacheKey> {
 
@@ -590,14 +597,9 @@ public class ReflectivePropertyAccessor implements PropertyAccessor {
 
 		@Override
 		public boolean equals(@Nullable Object other) {
-			if (this == other) {
-				return true;
-			}
-			if (!(other instanceof PropertyCacheKey otherKey)) {
-				return false;
-			}
-			return (this.clazz == otherKey.clazz && this.property.equals(otherKey.property) &&
-					this.targetIsClass == otherKey.targetIsClass);
+			return (this == other || (other instanceof PropertyCacheKey that &&
+					this.clazz == that.clazz && this.property.equals(that.property) &&
+					this.targetIsClass == that.targetIsClass));
 		}
 
 		@Override
@@ -757,6 +759,26 @@ public class ReflectivePropertyAccessor implements PropertyAccessor {
 						CodeFlow.toJvmDescriptor(((Field) this.member).getType()));
 			}
 		}
+	}
+
+	/**
+	 * Inner class to avoid a hard dependency on Kotlin at runtime.
+	 */
+	private static class KotlinDelegate {
+
+		public static boolean isKotlinProperty(Method method, String methodSuffix) {
+			KClass<?> kClass = JvmClassMappingKt.getKotlinClass(method.getDeclaringClass());
+			for (KProperty<?> property : KClasses.getMemberProperties(kClass)) {
+				if (methodSuffix.equalsIgnoreCase(property.getName()) &&
+						(method.equals(ReflectJvmMapping.getJavaGetter(property)) ||
+								property instanceof KMutableProperty<?> mutableProperty &&
+										method.equals(ReflectJvmMapping.getJavaSetter(mutableProperty)))) {
+					return true;
+				}
+			}
+			return false;
+		}
+
 	}
 
 }

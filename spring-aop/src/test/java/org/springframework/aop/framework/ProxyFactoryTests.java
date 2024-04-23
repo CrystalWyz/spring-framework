@@ -1,5 +1,5 @@
 /*
- * Copyright 2002-2021 the original author or authors.
+ * Copyright 2002-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,7 +16,10 @@
 
 package org.springframework.aop.framework;
 
+import java.sql.SQLException;
+import java.sql.Savepoint;
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.List;
 
 import javax.accessibility.Accessible;
@@ -44,7 +47,7 @@ import org.springframework.core.annotation.Order;
 import org.springframework.core.testfixture.TimeStamped;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
+import static org.assertj.core.api.Assertions.assertThatRuntimeException;
 
 /**
  * Also tests AdvisedSupport and ProxyCreatorSupport superclasses.
@@ -54,10 +57,10 @@ import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
  * @author Chris Beams
  * @since 14.05.2003
  */
-public class ProxyFactoryTests {
+class ProxyFactoryTests {
 
 	@Test
-	public void testIndexOfMethods() {
+	void testIndexOfMethods() {
 		TestBean target = new TestBean();
 		ProxyFactory pf = new ProxyFactory(target);
 		NopInterceptor nop = new NopInterceptor();
@@ -73,7 +76,7 @@ public class ProxyFactoryTests {
 	}
 
 	@Test
-	public void testRemoveAdvisorByReference() {
+	void testRemoveAdvisorByReference() {
 		TestBean target = new TestBean();
 		ProxyFactory pf = new ProxyFactory(target);
 		NopInterceptor nop = new NopInterceptor();
@@ -93,7 +96,7 @@ public class ProxyFactoryTests {
 	}
 
 	@Test
-	public void testRemoveAdvisorByIndex() {
+	void testRemoveAdvisorByIndex() {
 		TestBean target = new TestBean();
 		ProxyFactory pf = new ProxyFactory(target);
 		NopInterceptor nop = new NopInterceptor();
@@ -141,7 +144,7 @@ public class ProxyFactoryTests {
 	}
 
 	@Test
-	public void testReplaceAdvisor() {
+	void testReplaceAdvisor() {
 		TestBean target = new TestBean();
 		ProxyFactory pf = new ProxyFactory(target);
 		NopInterceptor nop = new NopInterceptor();
@@ -170,7 +173,7 @@ public class ProxyFactoryTests {
 	}
 
 	@Test
-	public void testAddRepeatedInterface() {
+	void testAddRepeatedInterface() {
 		TimeStamped tst = () -> {
 			throw new UnsupportedOperationException("getTimeStamp");
 		};
@@ -183,7 +186,7 @@ public class ProxyFactoryTests {
 	}
 
 	@Test
-	public void testGetsAllInterfaces() {
+	void testGetsAllInterfaces() {
 		// Extend to get new interface
 		class TestBeanSubclass extends TestBean implements Comparable<Object> {
 			@Override
@@ -194,11 +197,11 @@ public class ProxyFactoryTests {
 		TestBeanSubclass raw = new TestBeanSubclass();
 		ProxyFactory factory = new ProxyFactory(raw);
 		//System.out.println("Proxied interfaces are " + StringUtils.arrayToDelimitedString(factory.getProxiedInterfaces(), ","));
-		assertThat(factory.getProxiedInterfaces().length).as("Found correct number of interfaces").isEqualTo(5);
+		assertThat(factory.getProxiedInterfaces()).as("Found correct number of interfaces").hasSize(5);
 		ITestBean tb = (ITestBean) factory.getProxy();
 		assertThat(tb).as("Picked up secondary interface").isInstanceOf(IOther.class);
 		raw.setAge(25);
-		assertThat(tb.getAge() == raw.getAge()).isTrue();
+		assertThat(tb.getAge()).isEqualTo(raw.getAge());
 
 		long t = 555555L;
 		TimestampIntroductionInterceptor ti = new TimestampIntroductionInterceptor(t);
@@ -208,19 +211,19 @@ public class ProxyFactoryTests {
 		factory.addAdvisor(0, new DefaultIntroductionAdvisor(ti, TimeStamped.class));
 
 		Class<?>[] newProxiedInterfaces = factory.getProxiedInterfaces();
-		assertThat(newProxiedInterfaces.length).as("Advisor proxies one more interface after introduction").isEqualTo(oldProxiedInterfaces.length + 1);
+		assertThat(newProxiedInterfaces).as("Advisor proxies one more interface after introduction").hasSize(oldProxiedInterfaces.length + 1);
 
 		TimeStamped ts = (TimeStamped) factory.getProxy();
-		assertThat(ts.getTimeStamp() == t).isTrue();
+		assertThat(ts.getTimeStamp()).isEqualTo(t);
 		// Shouldn't fail;
 		((IOther) ts).absquatulate();
 	}
 
 	@Test
-	public void testInterceptorInclusionMethods() {
+	void testInterceptorInclusionMethods() {
 		class MyInterceptor implements MethodInterceptor {
 			@Override
-			public Object invoke(MethodInvocation invocation) throws Throwable {
+			public Object invoke(MethodInvocation invocation) {
 				throw new UnsupportedOperationException();
 			}
 		}
@@ -231,19 +234,19 @@ public class ProxyFactoryTests {
 		factory.addAdvice(0, di);
 		assertThat(factory.getProxy()).isInstanceOf(ITestBean.class);
 		assertThat(factory.adviceIncluded(di)).isTrue();
-		assertThat(!factory.adviceIncluded(diUnused)).isTrue();
-		assertThat(factory.countAdvicesOfType(NopInterceptor.class) == 1).isTrue();
-		assertThat(factory.countAdvicesOfType(MyInterceptor.class) == 0).isTrue();
+		assertThat(factory.adviceIncluded(diUnused)).isFalse();
+		assertThat(factory.countAdvicesOfType(NopInterceptor.class)).isEqualTo(1);
+		assertThat(factory.countAdvicesOfType(MyInterceptor.class)).isEqualTo(0);
 
 		factory.addAdvice(0, diUnused);
 		assertThat(factory.adviceIncluded(diUnused)).isTrue();
-		assertThat(factory.countAdvicesOfType(NopInterceptor.class) == 2).isTrue();
+		assertThat(factory.countAdvicesOfType(NopInterceptor.class)).isEqualTo(2);
 	}
 
 	@Test
-	public void testSealedInterfaceExclusion() {
+	void testSealedInterfaceExclusion() {
 		// String implements ConstantDesc on JDK 12+, sealed as of JDK 17
-		ProxyFactory factory = new ProxyFactory(new String());
+		ProxyFactory factory = new ProxyFactory("");
 		NopInterceptor di = new NopInterceptor();
 		factory.addAdvice(0, di);
 		Object proxy = factory.getProxy();
@@ -254,10 +257,11 @@ public class ProxyFactoryTests {
 	 * Should see effect immediately on behavior.
 	 */
 	@Test
-	public void testCanAddAndRemoveAspectInterfacesOnSingleton() {
+	void testCanAddAndRemoveAspectInterfacesOnSingleton() {
 		ProxyFactory config = new ProxyFactory(new TestBean());
 
-		assertThat(config.getProxy() instanceof TimeStamped).as("Shouldn't implement TimeStamped before manipulation").isFalse();
+		assertThat(config.getProxy()).as("Shouldn't implement TimeStamped before manipulation")
+				.isNotInstanceOf(TimeStamped.class);
 
 		long time = 666L;
 		TimestampIntroductionInterceptor ti = new TimestampIntroductionInterceptor();
@@ -267,26 +271,26 @@ public class ProxyFactoryTests {
 		int oldCount = config.getAdvisors().length;
 		config.addAdvisor(0, new DefaultIntroductionAdvisor(ti, TimeStamped.class));
 
-		assertThat(config.getAdvisors().length == oldCount + 1).isTrue();
+		assertThat(config.getAdvisors()).hasSize(oldCount + 1);
 
 		TimeStamped ts = (TimeStamped) config.getProxy();
-		assertThat(ts.getTimeStamp() == time).isTrue();
+		assertThat(ts.getTimeStamp()).isEqualTo(time);
 
 		// Can remove
 		config.removeAdvice(ti);
 
-		assertThat(config.getAdvisors().length == oldCount).isTrue();
+		assertThat(config.getAdvisors()).hasSize(oldCount);
 
-		assertThatExceptionOfType(RuntimeException.class)
+		assertThatRuntimeException()
 				.as("Existing object won't implement this interface any more")
 				.isThrownBy(ts::getTimeStamp); // Existing reference will fail
 
-		assertThat(config.getProxy() instanceof TimeStamped).as("Should no longer implement TimeStamped").isFalse();
+		assertThat(config.getProxy()).as("Should no longer implement TimeStamped").isNotInstanceOf(TimeStamped.class);
 
 		// Now check non-effect of removing interceptor that isn't there
 		config.removeAdvice(new DebugInterceptor());
 
-		assertThat(config.getAdvisors().length == oldCount).isTrue();
+		assertThat(config.getAdvisors()).hasSize(oldCount);
 
 		ITestBean it = (ITestBean) ts;
 		DebugInterceptor debugInterceptor = new DebugInterceptor();
@@ -296,39 +300,39 @@ public class ProxyFactoryTests {
 		config.removeAdvice(debugInterceptor);
 		it.getSpouse();
 		// not invoked again
-		assertThat(debugInterceptor.getCount() == 1).isTrue();
+		assertThat(debugInterceptor.getCount()).isEqualTo(1);
 	}
 
 	@Test
-	public void testProxyTargetClassWithInterfaceAsTarget() {
+	void testProxyTargetClassWithInterfaceAsTarget() {
 		ProxyFactory pf = new ProxyFactory();
 		pf.setTargetClass(ITestBean.class);
 		Object proxy = pf.getProxy();
 		assertThat(AopUtils.isJdkDynamicProxy(proxy)).as("Proxy is a JDK proxy").isTrue();
-		assertThat(proxy instanceof ITestBean).isTrue();
+		assertThat(proxy).isInstanceOf(ITestBean.class);
 		assertThat(AopProxyUtils.ultimateTargetClass(proxy)).isEqualTo(ITestBean.class);
 
 		ProxyFactory pf2 = new ProxyFactory(proxy);
 		Object proxy2 = pf2.getProxy();
 		assertThat(AopUtils.isJdkDynamicProxy(proxy2)).as("Proxy is a JDK proxy").isTrue();
-		assertThat(proxy2 instanceof ITestBean).isTrue();
+		assertThat(proxy2).isInstanceOf(ITestBean.class);
 		assertThat(AopProxyUtils.ultimateTargetClass(proxy2)).isEqualTo(ITestBean.class);
 	}
 
 	@Test
-	public void testProxyTargetClassWithConcreteClassAsTarget() {
+	void testProxyTargetClassWithConcreteClassAsTarget() {
 		ProxyFactory pf = new ProxyFactory();
 		pf.setTargetClass(TestBean.class);
 		Object proxy = pf.getProxy();
 		assertThat(AopUtils.isCglibProxy(proxy)).as("Proxy is a CGLIB proxy").isTrue();
-		assertThat(proxy instanceof TestBean).isTrue();
+		assertThat(proxy).isInstanceOf(TestBean.class);
 		assertThat(AopProxyUtils.ultimateTargetClass(proxy)).isEqualTo(TestBean.class);
 
 		ProxyFactory pf2 = new ProxyFactory(proxy);
 		pf2.setProxyTargetClass(true);
 		Object proxy2 = pf2.getProxy();
 		assertThat(AopUtils.isCglibProxy(proxy2)).as("Proxy is a CGLIB proxy").isTrue();
-		assertThat(proxy2 instanceof TestBean).isTrue();
+		assertThat(proxy2).isInstanceOf(TestBean.class);
 		assertThat(AopProxyUtils.ultimateTargetClass(proxy2)).isEqualTo(TestBean.class);
 	}
 
@@ -338,24 +342,23 @@ public class ProxyFactoryTests {
 		JFrame frame = new JFrame();
 		ProxyFactory proxyFactory = new ProxyFactory(frame);
 		Object proxy = proxyFactory.getProxy();
-		assertThat(proxy instanceof RootPaneContainer).isTrue();
-		assertThat(proxy instanceof Accessible).isTrue();
+		assertThat(proxy).isInstanceOf(RootPaneContainer.class);
+		assertThat(proxy).isInstanceOf(Accessible.class);
 	}
 
 	@Test
-	public void testInterfaceProxiesCanBeOrderedThroughAnnotations() {
+	void testInterfaceProxiesCanBeOrderedThroughAnnotations() {
 		Object proxy1 = new ProxyFactory(new A()).getProxy();
 		Object proxy2 = new ProxyFactory(new B()).getProxy();
 		List<Object> list = new ArrayList<>(2);
 		list.add(proxy1);
 		list.add(proxy2);
 		AnnotationAwareOrderComparator.sort(list);
-		assertThat(list.get(0)).isSameAs(proxy2);
-		assertThat(list.get(1)).isSameAs(proxy1);
+		assertThat(list).containsExactly(proxy2, proxy1);
 	}
 
 	@Test
-	public void testTargetClassProxiesCanBeOrderedThroughAnnotations() {
+	void testTargetClassProxiesCanBeOrderedThroughAnnotations() {
 		ProxyFactory pf1 = new ProxyFactory(new A());
 		pf1.setProxyTargetClass(true);
 		ProxyFactory pf2 = new ProxyFactory(new B());
@@ -366,18 +369,57 @@ public class ProxyFactoryTests {
 		list.add(proxy1);
 		list.add(proxy2);
 		AnnotationAwareOrderComparator.sort(list);
-		assertThat(list.get(0)).isSameAs(proxy2);
-		assertThat(list.get(1)).isSameAs(proxy1);
+		assertThat(list).containsExactly(proxy2, proxy1);
 	}
 
 	@Test
-	public void testInterceptorWithoutJoinpoint() {
+	void testInterceptorWithoutJoinpoint() {
 		final TestBean target = new TestBean("tb");
 		ITestBean proxy = ProxyFactory.getProxy(ITestBean.class, (MethodInterceptor) invocation -> {
 			assertThat(invocation.getThis()).isNull();
 			return invocation.getMethod().invoke(target, invocation.getArguments());
 		});
 		assertThat(proxy.getName()).isEqualTo("tb");
+	}
+
+	@Test
+	void testCharSequenceProxy() {
+		CharSequence target = "test";
+		ProxyFactory pf = new ProxyFactory(target);
+		ClassLoader cl = target.getClass().getClassLoader();
+		CharSequence proxy = (CharSequence) pf.getProxy(cl);
+		assertThat(proxy.toString()).isEqualTo(target);
+		assertThat(pf.getProxyClass(cl)).isSameAs(proxy.getClass());
+	}
+
+	@Test
+	void testDateProxy() {
+		Date target = new Date();
+		ProxyFactory pf = new ProxyFactory(target);
+		pf.setProxyTargetClass(true);
+		ClassLoader cl = target.getClass().getClassLoader();
+		Date proxy = (Date) pf.getProxy(cl);
+		assertThat(proxy.getTime()).isEqualTo(target.getTime());
+		assertThat(pf.getProxyClass(cl)).isSameAs(proxy.getClass());
+	}
+
+	@Test
+	void testJdbcSavepointProxy() throws SQLException {
+		Savepoint target = new Savepoint() {
+			@Override
+			public int getSavepointId() {
+				return 1;
+			}
+			@Override
+			public String getSavepointName() {
+				return "sp";
+			}
+		};
+		ProxyFactory pf = new ProxyFactory(target);
+		ClassLoader cl = Savepoint.class.getClassLoader();
+		Savepoint proxy = (Savepoint) pf.getProxy(cl);
+		assertThat(proxy.getSavepointName()).isEqualTo("sp");
+		assertThat(pf.getProxyClass(cl)).isSameAs(proxy.getClass());
 	}
 
 
@@ -391,7 +433,7 @@ public class ProxyFactoryTests {
 
 
 	@Order(1)
-	public static class B implements Runnable{
+	public static class B implements Runnable {
 
 		@Override
 		public void run() {

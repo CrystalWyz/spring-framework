@@ -1,5 +1,5 @@
 /*
- * Copyright 2002-2021 the original author or authors.
+ * Copyright 2002-2023 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -134,6 +134,7 @@ public class RSocketFrameTypeMessageCondition extends AbstractMessageCondition<R
 	}
 
 	@Override
+	@Nullable
 	public RSocketFrameTypeMessageCondition getMatchingCondition(Message<?> message) {
 		FrameType actual = message.getHeaders().get(FRAME_TYPE_HEADER, FrameType.class);
 		if (actual != null) {
@@ -143,7 +144,7 @@ public class RSocketFrameTypeMessageCondition extends AbstractMessageCondition<R
 				}
 			}
 		}
-		return  null;
+		return null;
 	}
 
 	@Override
@@ -154,7 +155,7 @@ public class RSocketFrameTypeMessageCondition extends AbstractMessageCondition<R
 
 	/**
 	 * Return a condition for matching the RSocket request interaction type with
-	 * that is selected based on the delcared request and response cardinality
+	 * that is selected based on the declared request and response cardinality
 	 * of some handler method.
 	 * <p>The table below shows the selections made:
 	 * <table>
@@ -192,20 +193,16 @@ public class RSocketFrameTypeMessageCondition extends AbstractMessageCondition<R
 	 * @since 5.2.2
 	 */
 	public static RSocketFrameTypeMessageCondition getCondition(int cardinalityIn, int cardinalityOut) {
-		switch (cardinalityIn) {
-			case 0:
-			case 1:
-				switch (cardinalityOut) {
-					case 0: return REQUEST_FNF_OR_RESPONSE_CONDITION;
-					case 1: return REQUEST_RESPONSE_CONDITION;
-					case 2: return REQUEST_STREAM_CONDITION;
-					default: throw new IllegalStateException("Invalid cardinality: " + cardinalityOut);
-				}
-			case 2:
-				return REQUEST_CHANNEL_CONDITION;
-			default:
-				throw new IllegalStateException("Invalid cardinality: " + cardinalityIn);
-		}
+		return switch (cardinalityIn) {
+			case 0, 1 -> switch (cardinalityOut) {
+				case 0 -> REQUEST_FNF_OR_RESPONSE_CONDITION;
+				case 1 -> REQUEST_RESPONSE_CONDITION;
+				case 2 -> REQUEST_STREAM_CONDITION;
+				default -> throw new IllegalStateException("Invalid response cardinality: " + cardinalityOut);
+			};
+			case 2 -> REQUEST_CHANNEL_CONDITION;
+			default -> throw new IllegalStateException("Invalid request cardinality: " + cardinalityIn);
+		};
 	}
 
 }

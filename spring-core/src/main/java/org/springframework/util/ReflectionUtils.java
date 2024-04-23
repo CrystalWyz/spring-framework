@@ -1,5 +1,5 @@
 /*
- * Copyright 2002-2021 the original author or authors.
+ * Copyright 2002-2023 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -46,12 +46,12 @@ import org.springframework.lang.Nullable;
 public abstract class ReflectionUtils {
 
 	/**
-	 * Pre-built MethodFilter that matches all non-bridge non-synthetic methods
+	 * Pre-built {@link MethodFilter} that matches all non-bridge non-synthetic methods
 	 * which are not declared on {@code java.lang.Object}.
 	 * @since 3.0.5
 	 */
 	public static final MethodFilter USER_DECLARED_METHODS =
-			(method -> !method.isBridge() && !method.isSynthetic());
+			(method -> !method.isBridge() && !method.isSynthetic() && (method.getDeclaringClass() != Object.class));
 
 	/**
 	 * Pre-built FieldFilter that matches all non-static, non-final fields.
@@ -106,11 +106,11 @@ public abstract class ReflectionUtils {
 		if (ex instanceof IllegalAccessException) {
 			throw new IllegalStateException("Could not access method or field: " + ex.getMessage());
 		}
-		if (ex instanceof InvocationTargetException) {
-			handleInvocationTargetException((InvocationTargetException) ex);
+		if (ex instanceof InvocationTargetException invocationTargetException) {
+			handleInvocationTargetException(invocationTargetException);
 		}
-		if (ex instanceof RuntimeException) {
-			throw (RuntimeException) ex;
+		if (ex instanceof RuntimeException runtimeException) {
+			throw runtimeException;
 		}
 		throw new UndeclaredThrowableException(ex);
 	}
@@ -137,12 +137,12 @@ public abstract class ReflectionUtils {
 	 * @param ex the exception to rethrow
 	 * @throws RuntimeException the rethrown exception
 	 */
-	public static void rethrowRuntimeException(Throwable ex) {
-		if (ex instanceof RuntimeException) {
-			throw (RuntimeException) ex;
+	public static void rethrowRuntimeException(@Nullable Throwable ex) {
+		if (ex instanceof RuntimeException runtimeException) {
+			throw runtimeException;
 		}
-		if (ex instanceof Error) {
-			throw (Error) ex;
+		if (ex instanceof Error error) {
+			throw error;
 		}
 		throw new UndeclaredThrowableException(ex);
 	}
@@ -155,17 +155,17 @@ public abstract class ReflectionUtils {
 	 * <p>Rethrows the underlying exception cast to an {@link Exception} or
 	 * {@link Error} if appropriate; otherwise, throws an
 	 * {@link UndeclaredThrowableException}.
-	 * @param ex the exception to rethrow
+	 * @param throwable the exception to rethrow
 	 * @throws Exception the rethrown exception (in case of a checked exception)
 	 */
-	public static void rethrowException(Throwable ex) throws Exception {
-		if (ex instanceof Exception) {
-			throw (Exception) ex;
+	public static void rethrowException(@Nullable Throwable throwable) throws Exception {
+		if (throwable instanceof Exception exception) {
+			throw exception;
 		}
-		if (ex instanceof Error) {
-			throw (Error) ex;
+		if (throwable instanceof Error error) {
+			throw error;
 		}
-		throw new UndeclaredThrowableException(ex);
+		throw new UndeclaredThrowableException(throwable);
 	}
 
 
@@ -353,7 +353,10 @@ public abstract class ReflectionUtils {
 	 * @throws IllegalStateException if introspection fails
 	 */
 	public static void doWithMethods(Class<?> clazz, MethodCallback mc, @Nullable MethodFilter mf) {
-		// Keep backing up the inheritance hierarchy.
+		if (mf == USER_DECLARED_METHODS && clazz == Object.class) {
+			// nothing to introspect
+			return;
+		}
 		Method[] methods = getDeclaredMethods(clazz, false);
 		for (Method method : methods) {
 			if (mf != null && !mf.matches(method)) {
@@ -366,6 +369,7 @@ public abstract class ReflectionUtils {
 				throw new IllegalStateException("Not allowed to access method '" + method.getName() + "': " + ex);
 			}
 		}
+		// Keep backing up the inheritance hierarchy.
 		if (clazz.getSuperclass() != null && (mf != USER_DECLARED_METHODS || clazz.getSuperclass() != Object.class)) {
 			doWithMethods(clazz.getSuperclass(), mc, mf);
 		}
@@ -459,7 +463,7 @@ public abstract class ReflectionUtils {
 		if (result == null) {
 			try {
 				Method[] declaredMethods = clazz.getDeclaredMethods();
-				List<Method> defaultMethods = findConcreteMethodsOnInterfaces(clazz);
+				List<Method> defaultMethods = findDefaultMethodsOnInterfaces(clazz);
 				if (defaultMethods != null) {
 					result = new Method[declaredMethods.length + defaultMethods.size()];
 					System.arraycopy(declaredMethods, 0, result, 0, declaredMethods.length);
@@ -483,15 +487,15 @@ public abstract class ReflectionUtils {
 	}
 
 	@Nullable
-	private static List<Method> findConcreteMethodsOnInterfaces(Class<?> clazz) {
+	private static List<Method> findDefaultMethodsOnInterfaces(Class<?> clazz) {
 		List<Method> result = null;
 		for (Class<?> ifc : clazz.getInterfaces()) {
-			for (Method ifcMethod : ifc.getMethods()) {
-				if (!Modifier.isAbstract(ifcMethod.getModifiers())) {
+			for (Method method : ifc.getMethods()) {
+				if (method.isDefault()) {
 					if (result == null) {
 						result = new ArrayList<>();
 					}
-					result.add(ifcMethod);
+					result.add(method);
 				}
 			}
 		}
@@ -503,16 +507,8 @@ public abstract class ReflectionUtils {
 	 * @see java.lang.Object#equals(Object)
 	 */
 	public static boolean isEqualsMethod(@Nullable Method method) {
-		if (method == null) {
-			return false;
-		}
-		if (method.getParameterCount() != 1) {
-			return false;
-		}
-		if (!method.getName().equals("equals")) {
-			return false;
-		}
-		return method.getParameterTypes()[0] == Object.class;
+		return (method != null && method.getParameterCount() == 1 && method.getName().equals("equals") &&
+				method.getParameterTypes()[0] == Object.class);
 	}
 
 	/**
@@ -520,7 +516,7 @@ public abstract class ReflectionUtils {
 	 * @see java.lang.Object#hashCode()
 	 */
 	public static boolean isHashCodeMethod(@Nullable Method method) {
-		return method != null && method.getParameterCount() == 0 && method.getName().equals("hashCode");
+		return (method != null && method.getParameterCount() == 0 && method.getName().equals("hashCode"));
 	}
 
 	/**
@@ -605,6 +601,31 @@ public abstract class ReflectionUtils {
 			for (Field field : fields) {
 				if ((name == null || name.equals(field.getName())) &&
 						(type == null || type.equals(field.getType()))) {
+					return field;
+				}
+			}
+			searchType = searchType.getSuperclass();
+		}
+		return null;
+	}
+
+	/**
+	 * Attempt to find a {@link Field field} on the supplied {@link Class} with the
+	 * supplied {@code name}. Searches all superclasses up to {@link Object}.
+	 * @param clazz the class to introspect
+	 * @param name the name of the field (with upper/lower case to be ignored)
+	 * @return the corresponding Field object, or {@code null} if not found
+	 * @since 6.1
+	 */
+	@Nullable
+	public static Field findFieldIgnoreCase(Class<?> clazz, String name) {
+		Assert.notNull(clazz, "Class must not be null");
+		Assert.notNull(name, "Name must not be null");
+		Class<?> searchType = clazz;
+		while (Object.class != searchType && searchType != null) {
+			Field[] fields = getDeclaredFields(searchType);
+			for (Field field : fields) {
+				if (name.equalsIgnoreCase(field.getName())) {
 					return field;
 				}
 			}

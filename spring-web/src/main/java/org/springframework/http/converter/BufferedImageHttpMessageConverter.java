@@ -1,5 +1,5 @@
 /*
- * Copyright 2002-2022 the original author or authors.
+ * Copyright 2002-2023 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -45,6 +45,7 @@ import org.springframework.http.MediaType;
 import org.springframework.http.StreamingHttpOutputMessage;
 import org.springframework.lang.Nullable;
 import org.springframework.util.Assert;
+import org.springframework.util.StreamUtils;
 import org.springframework.util.StringUtils;
 
 /**
@@ -127,7 +128,7 @@ public class BufferedImageHttpMessageConverter implements HttpMessageConverter<B
 	 */
 	public void setCacheDir(File cacheDir) {
 		Assert.notNull(cacheDir, "'cacheDir' must not be null");
-		Assert.isTrue(cacheDir.isDirectory(), "'cacheDir' is not a directory");
+		Assert.isTrue(cacheDir.isDirectory(), () -> "'cacheDir' is not a directory: " + cacheDir);
 		this.cacheDir = cacheDir;
 	}
 
@@ -207,6 +208,7 @@ public class BufferedImageHttpMessageConverter implements HttpMessageConverter<B
 	}
 
 	private ImageInputStream createImageInputStream(InputStream is) throws IOException {
+		is = StreamUtils.nonClosing(is);
 		if (this.cacheDir != null) {
 			return new FileCacheImageInputStream(is, this.cacheDir);
 		}
@@ -224,7 +226,17 @@ public class BufferedImageHttpMessageConverter implements HttpMessageConverter<B
 		outputMessage.getHeaders().setContentType(selectedContentType);
 
 		if (outputMessage instanceof StreamingHttpOutputMessage streamingOutputMessage) {
-			streamingOutputMessage.setBody(outputStream -> writeInternal(image, selectedContentType, outputStream));
+			streamingOutputMessage.setBody(new StreamingHttpOutputMessage.Body() {
+				@Override
+				public void writeTo(OutputStream outputStream) throws IOException {
+					BufferedImageHttpMessageConverter.this.writeInternal(image, selectedContentType, outputStream);
+				}
+
+				@Override
+				public boolean repeatable() {
+					return true;
+				}
+			});
 		}
 		else {
 			writeInternal(image, selectedContentType, outputMessage.getBody());

@@ -1,5 +1,5 @@
 /*
- * Copyright 2002-2019 the original author or authors.
+ * Copyright 2002-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -26,7 +26,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
 
 /**
- * Unit tests for the {@link ResourceEditor} class.
+ * Tests for {@link ResourceEditor}.
  *
  * @author Rick Evans
  * @author Arjen Poutsma
@@ -53,14 +53,14 @@ class ResourceEditorTests {
 	void setAndGetAsTextWithNull() {
 		PropertyEditor editor = new ResourceEditor();
 		editor.setAsText(null);
-		assertThat(editor.getAsText()).isEqualTo("");
+		assertThat(editor.getAsText()).isEmpty();
 	}
 
 	@Test
 	void setAndGetAsTextWithWhitespaceResource() {
 		PropertyEditor editor = new ResourceEditor();
 		editor.setAsText("  ");
-		assertThat(editor.getAsText()).isEqualTo("");
+		assertThat(editor.getAsText()).isEmpty();
 	}
 
 	@Test
@@ -73,7 +73,7 @@ class ResourceEditorTests {
 			assertThat(resolved.getFilename()).isEqualTo("foo");
 		}
 		finally {
-			System.getProperties().remove("test.prop");
+			System.clearProperty("test.prop");
 		}
 	}
 
@@ -87,7 +87,7 @@ class ResourceEditorTests {
 			assertThat(resolved.getFilename()).isEqualTo("foo-${bar}");
 		}
 		finally {
-			System.getProperties().remove("test.prop");
+			System.clearProperty("test.prop");
 		}
 	}
 
@@ -102,7 +102,7 @@ class ResourceEditorTests {
 			});
 		}
 		finally {
-			System.getProperties().remove("test.prop");
+			System.clearProperty("test.prop");
 		}
 	}
 

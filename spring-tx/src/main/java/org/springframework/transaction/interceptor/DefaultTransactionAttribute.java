@@ -1,5 +1,5 @@
 /*
- * Copyright 2002-2021 the original author or authors.
+ * Copyright 2002-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -51,7 +51,7 @@ public class DefaultTransactionAttribute extends DefaultTransactionDefinition im
 
 
 	/**
-	 * Create a new DefaultTransactionAttribute, with default settings.
+	 * Create a new {@code DefaultTransactionAttribute} with default settings.
 	 * Can be modified through bean property setters.
 	 * @see #setPropagationBehavior
 	 * @see #setIsolationLevel
@@ -76,7 +76,7 @@ public class DefaultTransactionAttribute extends DefaultTransactionDefinition im
 	}
 
 	/**
-	 * Create a new DefaultTransactionAttribute with the given
+	 * Create a new {@code DefaultTransactionAttribute} with the given
 	 * propagation behavior. Can be modified through bean property setters.
 	 * @param propagationBehavior one of the propagation constants in the
 	 * TransactionDefinition interface
@@ -170,7 +170,7 @@ public class DefaultTransactionAttribute extends DefaultTransactionDefinition im
 
 	/**
 	 * The default behavior is as with EJB: rollback on unchecked exception
-	 * ({@link RuntimeException}), assuming an unexpected outcome outside of any
+	 * ({@link RuntimeException}), assuming an unexpected outcome outside any
 	 * business rules. Additionally, we also attempt to rollback on {@link Error} which
 	 * is clearly an unexpected outcome as well. By contrast, a checked exception is
 	 * considered a business exception and therefore a regular expected outcome of the
@@ -207,7 +207,7 @@ public class DefaultTransactionAttribute extends DefaultTransactionDefinition im
 				}
 				catch (RuntimeException ex) {
 					throw new IllegalArgumentException(
-							"Invalid timeoutString value \"" + timeoutString + "\" - cannot parse into int");
+							"Invalid timeoutString value \"" + timeoutString + "\"; " + ex);
 				}
 			}
 		}

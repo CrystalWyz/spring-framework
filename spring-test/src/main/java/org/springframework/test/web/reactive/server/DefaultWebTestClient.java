@@ -1,5 +1,5 @@
 /*
- * Copyright 2002-2021 the original author or authors.
+ * Copyright 2002-2023 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -186,16 +186,13 @@ class DefaultWebTestClient implements WebTestClient {
 		private final Map<String, Object> attributes = new LinkedHashMap<>(4);
 
 		@Nullable
-		private Consumer<ClientHttpRequest> httpRequestConsumer;
-
-		@Nullable
 		private String uriTemplate;
 
 		private final String requestId;
 
 		DefaultRequestBodyUriSpec(HttpMethod httpMethod) {
 			this.httpMethod = httpMethod;
-			this.requestId = String.valueOf(requestIndex.incrementAndGet());
+			this.requestId = String.valueOf(DefaultWebTestClient.this.requestIndex.incrementAndGet());
 			this.headers = new HttpHeaders();
 			this.headers.add(WebTestClient.WEBTESTCLIENT_REQUEST_ID, this.requestId);
 		}
@@ -203,19 +200,19 @@ class DefaultWebTestClient implements WebTestClient {
 		@Override
 		public RequestBodySpec uri(String uriTemplate, Object... uriVariables) {
 			this.uriTemplate = uriTemplate;
-			return uri(uriBuilderFactory.expand(uriTemplate, uriVariables));
+			return uri(DefaultWebTestClient.this.uriBuilderFactory.expand(uriTemplate, uriVariables));
 		}
 
 		@Override
 		public RequestBodySpec uri(String uriTemplate, Map<String, ?> uriVariables) {
 			this.uriTemplate = uriTemplate;
-			return uri(uriBuilderFactory.expand(uriTemplate, uriVariables));
+			return uri(DefaultWebTestClient.this.uriBuilderFactory.expand(uriTemplate, uriVariables));
 		}
 
 		@Override
 		public RequestBodySpec uri(Function<UriBuilder, URI> uriFunction) {
 			this.uriTemplate = null;
-			return uri(uriFunction.apply(uriBuilderFactory.builder()));
+			return uri(uriFunction.apply(DefaultWebTestClient.this.uriBuilderFactory.builder()));
 		}
 
 		@Override
@@ -358,10 +355,10 @@ class DefaultWebTestClient implements WebTestClient {
 					initRequestBuilder().body(this.inserter).build() :
 					initRequestBuilder().build());
 
-			ClientResponse response = exchangeFunction.exchange(request).block(getResponseTimeout());
+			ClientResponse response = DefaultWebTestClient.this.exchangeFunction.exchange(request).block(getResponseTimeout());
 			Assert.state(response != null, "No ClientResponse");
 
-			ExchangeResult result = wiretapConnector.getExchangeResult(
+			ExchangeResult result = DefaultWebTestClient.this.wiretapConnector.getExchangeResult(
 					this.requestId, this.uriTemplate, getResponseTimeout());
 
 			return new DefaultResponseSpec(result, response,
@@ -369,44 +366,30 @@ class DefaultWebTestClient implements WebTestClient {
 		}
 
 		private ClientRequest.Builder initRequestBuilder() {
-			ClientRequest.Builder builder = ClientRequest.create(this.httpMethod, initUri())
-					.headers(headers -> headers.addAll(initHeaders()))
-					.cookies(cookies -> cookies.addAll(initCookies()))
+			return ClientRequest.create(this.httpMethod, initUri())
+					.headers(headersToUse -> {
+						if (!CollectionUtils.isEmpty(DefaultWebTestClient.this.defaultHeaders)) {
+							headersToUse.putAll(DefaultWebTestClient.this.defaultHeaders);
+						}
+						if (!CollectionUtils.isEmpty(this.headers)) {
+							headersToUse.putAll(this.headers);
+						}
+					})
+					.cookies(cookiesToUse -> {
+						if (!CollectionUtils.isEmpty(DefaultWebTestClient.this.defaultCookies)) {
+							cookiesToUse.putAll(DefaultWebTestClient.this.defaultCookies);
+						}
+						if (!CollectionUtils.isEmpty(this.cookies)) {
+							cookiesToUse.putAll(this.cookies);
+						}
+					})
 					.attributes(attributes -> attributes.putAll(this.attributes));
-			if (this.httpRequestConsumer != null) {
-				builder.httpRequest(this.httpRequestConsumer);
-			}
-			return builder;
 		}
 
 		private URI initUri() {
-			return (this.uri != null ? this.uri : uriBuilderFactory.expand(""));
+			return (this.uri != null ? this.uri : DefaultWebTestClient.this.uriBuilderFactory.expand(""));
 		}
 
-		private HttpHeaders initHeaders() {
-			if (CollectionUtils.isEmpty(defaultHeaders)) {
-				return this.headers;
-			}
-			HttpHeaders result = new HttpHeaders();
-			result.putAll(defaultHeaders);
-			result.putAll(this.headers);
-			return result;
-		}
-
-		private MultiValueMap<String, String> initCookies() {
-			if (CollectionUtils.isEmpty(this.cookies)) {
-				return (defaultCookies != null ? defaultCookies : new LinkedMultiValueMap<>());
-			}
-			else if (CollectionUtils.isEmpty(defaultCookies)) {
-				return this.cookies;
-			}
-			else {
-				MultiValueMap<String, String> result = new LinkedMultiValueMap<>();
-				result.putAll(defaultCookies);
-				result.putAll(this.cookies);
-				return result;
-			}
-		}
 	}
 
 
@@ -486,7 +469,7 @@ class DefaultWebTestClient implements WebTestClient {
 			return new DefaultBodyContentSpec(entityResult);
 		}
 
-		private  <B> EntityExchangeResult<B> initEntityExchangeResult(@Nullable B body) {
+		private <B> EntityExchangeResult<B> initEntityExchangeResult(@Nullable B body) {
 			EntityExchangeResult<B> result = new EntityExchangeResult<>(this.exchangeResult, body);
 			result.assertWithDiagnostics(() -> this.entityResultConsumer.accept(result));
 			return result;
@@ -528,9 +511,7 @@ class DefaultWebTestClient implements WebTestClient {
 				// that is not a RuntimeException, but since ExceptionCollector may
 				// throw a checked Exception, we handle this to appease the compiler
 				// and in case someone uses a "sneaky throws" technique.
-				AssertionError assertionError = new AssertionError(ex.getMessage());
-				assertionError.initCause(ex);
-				throw assertionError;
+				throw new AssertionError(ex.getMessage(), ex);
 			}
 			return this;
 		}
@@ -659,10 +640,10 @@ class DefaultWebTestClient implements WebTestClient {
 		}
 
 		@Override
-		public BodyContentSpec json(String json) {
+		public BodyContentSpec json(String json, boolean strict) {
 			this.result.assertWithDiagnostics(() -> {
 				try {
-					new JsonExpectationsHelper().assertJsonEqual(json, getBodyAsString());
+					new JsonExpectationsHelper().assertJsonEqual(json, getBodyAsString(), strict);
 				}
 				catch (Exception ex) {
 					throw new AssertionError("JSON parsing error", ex);

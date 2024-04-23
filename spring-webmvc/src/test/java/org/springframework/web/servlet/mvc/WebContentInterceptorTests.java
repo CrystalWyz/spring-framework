@@ -1,5 +1,5 @@
 /*
- * Copyright 2002-2020 the original author or authors.
+ * Copyright 2002-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,6 +20,7 @@ import java.util.Properties;
 import java.util.function.Function;
 import java.util.stream.Stream;
 
+import org.junit.jupiter.api.Named;
 import org.junit.jupiter.api.Test;
 
 import org.springframework.web.servlet.handler.PathPatternsParameterizedTest;
@@ -31,7 +32,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
 
 /**
- * Unit tests for {@link WebContentInterceptor}.
+ * Tests for {@link WebContentInterceptor}.
+ *
  * @author Rick Evans
  * @author Brian Clozel
  * @author Rossen Stoyanchev
@@ -46,7 +48,7 @@ class WebContentInterceptorTests {
 
 
 	@SuppressWarnings("unused")
-	private static Stream<Function<String, MockHttpServletRequest>> pathPatternsArguments() {
+	private static Stream<Named<Function<String, MockHttpServletRequest>>> pathPatternsArguments() {
 		return PathPatternsTestUtils.requestArguments();
 	}
 
@@ -109,8 +111,8 @@ class WebContentInterceptorTests {
 		interceptor.setCacheSeconds(10);
 		interceptor.preHandle(requestFactory.apply("/"), response, handler);
 
-		assertThat(response.getHeader("Pragma")).isEqualTo("");
-		assertThat(response.getHeader("Expires")).isEqualTo("");
+		assertThat(response.getHeader("Pragma")).isEmpty();
+		assertThat(response.getHeader("Expires")).isEmpty();
 	}
 
 	@SuppressWarnings("deprecation")
@@ -123,8 +125,8 @@ class WebContentInterceptorTests {
 		interceptor.setAlwaysMustRevalidate(true);
 		interceptor.preHandle(requestFactory.apply("/"), response, handler);
 
-		assertThat(response.getHeader("Pragma")).isEqualTo("");
-		assertThat(response.getHeader("Expires")).isEqualTo("");
+		assertThat(response.getHeader("Pragma")).isEmpty();
+		assertThat(response.getHeader("Expires")).isEmpty();
 	}
 
 	@SuppressWarnings("deprecation")

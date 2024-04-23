@@ -1,5 +1,5 @@
 /*
- * Copyright 2002-2020 the original author or authors.
+ * Copyright 2002-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -32,12 +32,14 @@ import org.springframework.util.StringValueResolver;
 
 /**
  * Simple implementation of the {@link AliasRegistry} interface.
+ *
  * <p>Serves as base class for
  * {@link org.springframework.beans.factory.support.BeanDefinitionRegistry}
  * implementations.
  *
  * @author Juergen Hoeller
  * @author Qimiao Chen
+ * @author Sam Brannen
  * @since 2.5.2
  */
 public class SimpleAliasRegistry implements AliasRegistry {
@@ -101,8 +103,8 @@ public class SimpleAliasRegistry implements AliasRegistry {
 	 */
 	public boolean hasAlias(String name, String alias) {
 		String registeredName = this.aliasMap.get(alias);
-		return ObjectUtils.nullSafeEquals(registeredName, name) || (registeredName != null
-				&& hasAlias(name, registeredName));
+		return ObjectUtils.nullSafeEquals(registeredName, name) ||
+				(registeredName != null && hasAlias(name, registeredName));
 	}
 
 	@Override
@@ -171,7 +173,7 @@ public class SimpleAliasRegistry implements AliasRegistry {
 						throw new IllegalStateException(
 								"Cannot register resolved alias '" + resolvedAlias + "' (original: '" + alias +
 								"') for name '" + resolvedName + "': It is already registered for name '" +
-								registeredName + "'.");
+								existingName + "'.");
 					}
 					checkForAliasCircle(resolvedName, resolvedAlias);
 					this.aliasMap.remove(alias);

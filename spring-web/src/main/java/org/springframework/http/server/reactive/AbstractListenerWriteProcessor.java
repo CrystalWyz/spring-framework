@@ -1,5 +1,5 @@
 /*
- * Copyright 2002-2021 the original author or authors.
+ * Copyright 2002-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -35,7 +35,7 @@ import org.springframework.util.StringUtils;
  *
  * <p>Specifically a base class for writing to the HTTP response body with
  * Servlet non-blocking I/O and Undertow XNIO as well for writing WebSocket
- * messages through the Java WebSocket API (JSR-356), Jetty, and Undertow.
+ * messages through the Jakarta WebSocket API (JSR-356), Jetty, and Undertow.
  *
  * @author Arjen Poutsma
  * @author Violeta Georgieva
@@ -70,7 +70,7 @@ public abstract class AbstractListenerWriteProcessor<T> implements Processor<T, 
 	 * Indicates we're waiting for one last isReady-onWritePossible cycle
 	 * after "onComplete" because some Servlet containers expect this to take
 	 * place prior to calling AsyncContext.complete().
-	 * See https://github.com/eclipse-ee4j/servlet-api/issues/273
+	 * @see <a href="https://github.com/jakartaee/servlet/issues/273">Jakarta Servlet issue 273</a>
 	 */
 	private volatile boolean readyToCompleteAfterLastWrite;
 
@@ -121,7 +121,7 @@ public abstract class AbstractListenerWriteProcessor<T> implements Processor<T, 
 
 	/**
 	 * Error signal from the upstream, write Publisher. This is also used by
-	 * sub-classes to delegate error notifications from the container.
+	 * subclasses to delegate error notifications from the container.
 	 */
 	@Override
 	public final void onError(Throwable ex) {
@@ -134,7 +134,7 @@ public abstract class AbstractListenerWriteProcessor<T> implements Processor<T, 
 
 	/**
 	 * Completion signal from the upstream, write Publisher. This is also used
-	 * by sub-classes to delegate completion notifications from the container.
+	 * by subclasses to delegate completion notifications from the container.
 	 */
 	@Override
 	public final void onComplete() {
@@ -269,7 +269,7 @@ public abstract class AbstractListenerWriteProcessor<T> implements Processor<T, 
 	}
 
 	/**
-	 * Invoked when an I/O error occurs during a write. Sub-classes may choose
+	 * Invoked when an I/O error occurs during a write. Subclasses may choose
 	 * to ignore this if they know the underlying API will provide an error
 	 * notification in a container thread.
 	 * <p>Defaults to no-op.
