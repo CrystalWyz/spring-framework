@@ -44,6 +44,8 @@ import java.util.TimeZone;
 import java.util.stream.Collectors;
 
 import jakarta.servlet.AsyncContext;
+import jakarta.servlet.AsyncEvent;
+import jakarta.servlet.AsyncListener;
 import jakarta.servlet.DispatcherType;
 import jakarta.servlet.RequestDispatcher;
 import jakarta.servlet.ServletConnection;
@@ -99,9 +101,6 @@ public class MockHttpServletRequest implements HttpServletRequest {
 	private static final String CHARSET_PREFIX = "charset=";
 
 	private static final TimeZone GMT = TimeZone.getTimeZone("GMT");
-
-	private static final BufferedReader EMPTY_BUFFERED_READER =
-			new BufferedReader(new StringReader(""));
 
 	/**
 	 * Date formats as specified in the HTTP RFC.
@@ -738,7 +737,7 @@ public class MockHttpServletRequest implements HttpServletRequest {
 			this.reader = new BufferedReader(sourceReader);
 		}
 		else {
-			this.reader = EMPTY_BUFFERED_READER;
+			this.reader = new BufferedReader(new StringReader(""));
 		}
 		return this.reader;
 	}
@@ -923,7 +922,19 @@ public class MockHttpServletRequest implements HttpServletRequest {
 	public AsyncContext startAsync(ServletRequest request, @Nullable ServletResponse response) {
 		Assert.state(this.asyncSupported, "Async not supported");
 		this.asyncStarted = true;
-		this.asyncContext = new MockAsyncContext(request, response);
+		MockAsyncContext newAsyncContext = new MockAsyncContext(request, response);
+		if (this.asyncContext != null) {
+			try {
+				AsyncEvent startEvent = new AsyncEvent(newAsyncContext);
+				for (AsyncListener asyncListener : this.asyncContext.getListeners()) {
+					asyncListener.onStartAsync(startEvent);
+				}
+			}
+			catch (IOException ex) {
+				// ignore failures
+			}
+		}
+		this.asyncContext = newAsyncContext;
 		return this.asyncContext;
 	}
 

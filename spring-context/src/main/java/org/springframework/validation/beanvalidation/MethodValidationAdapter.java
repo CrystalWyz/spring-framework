@@ -50,7 +50,6 @@ import org.springframework.core.MethodParameter;
 import org.springframework.core.ParameterNameDiscoverer;
 import org.springframework.core.annotation.AnnotationUtils;
 import org.springframework.lang.Nullable;
-import org.springframework.util.Assert;
 import org.springframework.util.function.SingletonSupplier;
 import org.springframework.validation.BeanPropertyBindingResult;
 import org.springframework.validation.BindingResult;
@@ -234,8 +233,8 @@ public class MethodValidationAdapter implements MethodValidator {
 
 	@Override
 	public final MethodValidationResult validateArguments(
-			Object target, Method method, @Nullable MethodParameter[] parameters, Object[] arguments,
-			Class<?>[] groups) {
+			Object target, Method method, @Nullable MethodParameter[] parameters,
+			Object[] arguments, Class<?>[] groups) {
 
 		Set<ConstraintViolation<Object>> violations =
 				invokeValidatorForArguments(target, method, arguments, groups);
@@ -256,23 +255,21 @@ public class MethodValidationAdapter implements MethodValidator {
 			Object target, Method method, Object[] arguments, Class<?>[] groups) {
 
 		ExecutableValidator execVal = this.validator.get().forExecutables();
-		Set<ConstraintViolation<Object>> violations;
 		try {
-			violations = execVal.validateParameters(target, method, arguments, groups);
+			return execVal.validateParameters(target, method, arguments, groups);
 		}
 		catch (IllegalArgumentException ex) {
 			// Probably a generic type mismatch between interface and impl as reported in SPR-12237 / HV-1011
 			// Let's try to find the bridged method on the implementation class...
 			Method bridgedMethod = BridgeMethodResolver.getMostSpecificMethod(method, target.getClass());
-			violations = execVal.validateParameters(target, bridgedMethod, arguments, groups);
+			return execVal.validateParameters(target, bridgedMethod, arguments, groups);
 		}
-		return violations;
 	}
 
 	@Override
 	public final MethodValidationResult validateReturnValue(
-			Object target, Method method, @Nullable MethodParameter returnType, @Nullable Object returnValue,
-			Class<?>[] groups) {
+			Object target, Method method, @Nullable MethodParameter returnType,
+			@Nullable Object returnValue, Class<?>[] groups) {
 
 		Set<ConstraintViolation<Object>> violations =
 				invokeValidatorForReturnValue(target, method, returnValue, groups);
@@ -305,9 +302,9 @@ public class MethodValidationAdapter implements MethodValidator {
 		Map<Path.Node, ParamErrorsBuilder> nestedViolations = new LinkedHashMap<>();
 
 		for (ConstraintViolation<Object> violation : violations) {
-			Iterator<Path.Node> itr = violation.getPropertyPath().iterator();
-			while (itr.hasNext()) {
-				Path.Node node = itr.next();
+			Iterator<Path.Node> nodes = violation.getPropertyPath().iterator();
+			while (nodes.hasNext()) {
+				Path.Node node = nodes.next();
 
 				MethodParameter parameter;
 				if (node.getKind().equals(ElementKind.PARAMETER)) {
@@ -323,13 +320,13 @@ public class MethodValidationAdapter implements MethodValidator {
 
 				Object arg = argumentFunction.apply(parameter.getParameterIndex());
 
-				// If the arg is a container, we need to element, but the only way to extract it
+				// If the arg is a container, we need the element, but the only way to extract it
 				// is to check for and use a container index or key on the next node:
 				// https://github.com/jakartaee/validation/issues/194
 
 				Path.Node parameterNode = node;
-				if (itr.hasNext()) {
-					node = itr.next();
+				if (nodes.hasNext()) {
+					node = nodes.next();
 				}
 
 				Object value;
@@ -348,12 +345,16 @@ public class MethodValidationAdapter implements MethodValidator {
 					value = map.get(key);
 					container = map;
 				}
+				else if (arg instanceof Iterable<?>) {
+					// No index or key, cannot access the specific value
+					value = arg;
+					container = arg;
+				}
 				else if (arg instanceof Optional<?> optional) {
 					value = optional.orElse(null);
 					container = optional;
 				}
 				else {
-					Assert.state(!node.isInIterable(), "No way to unwrap Iterable without index");
 					value = arg;
 					container = null;
 				}
@@ -425,7 +426,6 @@ public class MethodValidationAdapter implements MethodValidator {
 		 * @return the name to use
 		 */
 		String resolveName(MethodParameter parameter, @Nullable Object value);
-
 	}
 
 
@@ -456,6 +456,7 @@ public class MethodValidationAdapter implements MethodValidator {
 		public ParamValidationResultBuilder(
 				Object target, MethodParameter parameter, @Nullable Object value, @Nullable Object container,
 				@Nullable Integer containerIndex, @Nullable Object containerKey) {
+
 			this.target = target;
 			this.parameter = parameter;
 			this.value = value;
@@ -473,7 +474,6 @@ public class MethodValidationAdapter implements MethodValidator {
 					this.parameter, this.value, this.resolvableErrors, this.container,
 					this.containerIndex, this.containerKey);
 		}
-
 	}
 
 
@@ -527,8 +527,7 @@ public class MethodValidationAdapter implements MethodValidator {
 
 
 	/**
-	 * Default algorithm to select an object name, as described in
-	 * {@link #setObjectNameResolver(ObjectNameResolver)}.
+	 * Default algorithm to select an object name, as described in {@link #setObjectNameResolver}.
 	 */
 	private static class DefaultObjectNameResolver implements ObjectNameResolver {
 

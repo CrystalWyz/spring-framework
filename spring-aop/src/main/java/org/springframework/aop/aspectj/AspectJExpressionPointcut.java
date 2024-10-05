@@ -18,6 +18,7 @@ package org.springframework.aop.aspectj;
 
 import java.io.IOException;
 import java.io.ObjectInputStream;
+import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
 import java.util.Arrays;
@@ -41,6 +42,7 @@ import org.aspectj.weaver.tools.PointcutParameter;
 import org.aspectj.weaver.tools.PointcutParser;
 import org.aspectj.weaver.tools.PointcutPrimitive;
 import org.aspectj.weaver.tools.ShadowMatch;
+import org.aspectj.weaver.tools.UnsupportedPointcutPrimitiveException;
 
 import org.springframework.aop.ClassFilter;
 import org.springframework.aop.IntroductionAwareMethodMatcher;
@@ -85,6 +87,8 @@ import org.springframework.util.StringUtils;
 public class AspectJExpressionPointcut extends AbstractExpressionPointcut
 		implements ClassFilter, IntroductionAwareMethodMatcher, BeanFactoryAware {
 
+	private static final String AJC_MAGIC = "ajc$";
+
 	private static final Set<PointcutPrimitive> SUPPORTED_PRIMITIVES = Set.of(
 			PointcutPrimitive.EXECUTION,
 			PointcutPrimitive.ARGS,
@@ -102,6 +106,8 @@ public class AspectJExpressionPointcut extends AbstractExpressionPointcut
 	@Nullable
 	private Class<?> pointcutDeclarationScope;
 
+	private boolean aspectCompiledByAjc;
+
 	private String[] pointcutParameterNames = new String[0];
 
 	private Class<?>[] pointcutParameterTypes = new Class<?>[0];
@@ -114,6 +120,8 @@ public class AspectJExpressionPointcut extends AbstractExpressionPointcut
 
 	@Nullable
 	private transient PointcutExpression pointcutExpression;
+
+	private transient boolean pointcutParsingFailed = false;
 
 	private transient Map<Method, ShadowMatch> shadowMatchCache = new ConcurrentHashMap<>(32);
 
@@ -131,7 +139,7 @@ public class AspectJExpressionPointcut extends AbstractExpressionPointcut
 	 * @param paramTypes the parameter types for the pointcut
 	 */
 	public AspectJExpressionPointcut(Class<?> declarationScope, String[] paramNames, Class<?>[] paramTypes) {
-		this.pointcutDeclarationScope = declarationScope;
+		setPointcutDeclarationScope(declarationScope);
 		if (paramNames.length != paramTypes.length) {
 			throw new IllegalStateException(
 					"Number of pointcut parameter names must match number of pointcut parameter types");
@@ -146,6 +154,7 @@ public class AspectJExpressionPointcut extends AbstractExpressionPointcut
 	 */
 	public void setPointcutDeclarationScope(Class<?> pointcutDeclarationScope) {
 		this.pointcutDeclarationScope = pointcutDeclarationScope;
+		this.aspectCompiledByAjc = compiledByAjc(pointcutDeclarationScope);
 	}
 
 	/**
@@ -170,25 +179,30 @@ public class AspectJExpressionPointcut extends AbstractExpressionPointcut
 
 	@Override
 	public ClassFilter getClassFilter() {
-		obtainPointcutExpression();
+		checkExpression();
 		return this;
 	}
 
 	@Override
 	public MethodMatcher getMethodMatcher() {
-		obtainPointcutExpression();
+		checkExpression();
 		return this;
 	}
 
 
 	/**
-	 * Check whether this pointcut is ready to match,
-	 * lazily building the underlying AspectJ pointcut expression.
+	 * Check whether this pointcut is ready to match.
 	 */
-	private PointcutExpression obtainPointcutExpression() {
+	private void checkExpression() {
 		if (getExpression() == null) {
 			throw new IllegalStateException("Must set property 'expression' before attempting to match");
 		}
+	}
+
+	/**
+	 * Lazily build the underlying AspectJ pointcut expression.
+	 */
+	private PointcutExpression obtainPointcutExpression() {
 		if (this.pointcutExpression == null) {
 			this.pointcutClassLoader = determinePointcutClassLoader();
 			this.pointcutExpression = buildPointcutExpression(this.pointcutClassLoader);
@@ -265,10 +279,18 @@ public class AspectJExpressionPointcut extends AbstractExpressionPointcut
 
 	@Override
 	public boolean matches(Class<?> targetClass) {
-		PointcutExpression pointcutExpression = obtainPointcutExpression();
+		if (this.pointcutParsingFailed) {
+			// Pointcut parsing failed before below -> avoid trying again.
+			return false;
+		}
+		if (this.aspectCompiledByAjc && compiledByAjc(targetClass)) {
+			// ajc-compiled aspect class for ajc-compiled target class -> already weaved.
+			return false;
+		}
+
 		try {
 			try {
-				return pointcutExpression.couldMatchJoinPointsInType(targetClass);
+				return obtainPointcutExpression().couldMatchJoinPointsInType(targetClass);
 			}
 			catch (ReflectionWorldException ex) {
 				logger.debug("PointcutExpression matching rejected target class - trying fallback expression", ex);
@@ -279,6 +301,12 @@ public class AspectJExpressionPointcut extends AbstractExpressionPointcut
 				}
 			}
 		}
+		catch (IllegalArgumentException | IllegalStateException | UnsupportedPointcutPrimitiveException ex) {
+			this.pointcutParsingFailed = true;
+			if (logger.isDebugEnabled()) {
+				logger.debug("Pointcut parser rejected expression [" + getExpression() + "]: " + ex);
+			}
+		}
 		catch (Throwable ex) {
 			logger.debug("PointcutExpression matching rejected target class", ex);
 		}
@@ -287,7 +315,6 @@ public class AspectJExpressionPointcut extends AbstractExpressionPointcut
 
 	@Override
 	public boolean matches(Method method, Class<?> targetClass, boolean hasIntroductions) {
-		obtainPointcutExpression();
 		ShadowMatch shadowMatch = getTargetShadowMatch(method, targetClass);
 
 		// Special handling for this, target, @this, @target, @annotation
@@ -325,7 +352,6 @@ public class AspectJExpressionPointcut extends AbstractExpressionPointcut
 
 	@Override
 	public boolean matches(Method method, Class<?> targetClass, Object... args) {
-		obtainPointcutExpression();
 		ShadowMatch shadowMatch = getTargetShadowMatch(method, targetClass);
 
 		// Bind Spring AOP proxy to AspectJ "this" and Spring AOP target to AspectJ target,
@@ -519,6 +545,16 @@ public class AspectJExpressionPointcut extends AbstractExpressionPointcut
 
 	private boolean containsAnnotationPointcut() {
 		return resolveExpression().contains("@annotation");
+	}
+
+	private static boolean compiledByAjc(Class<?> clazz) {
+		for (Field field : clazz.getDeclaredFields()) {
+			if (field.getName().startsWith(AJC_MAGIC)) {
+				return true;
+			}
+		}
+		Class<?> superclass = clazz.getSuperclass();
+		return (superclass != null && compiledByAjc(superclass));
 	}
 
 

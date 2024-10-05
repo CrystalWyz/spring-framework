@@ -1,5 +1,5 @@
 /*
- * Copyright 2002-2023 the original author or authors.
+ * Copyright 2002-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -30,6 +30,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
 import org.junit.jupiter.api.AfterEach;
@@ -295,6 +296,24 @@ class ScheduledAnnotationBeanPostProcessorTests {
 	}
 
 	@Test
+	void oneTimeTaskOnNonRegisteredBean() {
+		BeanDefinition processorDefinition = new RootBeanDefinition(ScheduledAnnotationBeanPostProcessor.class);
+		context.registerBeanDefinition("postProcessor", processorDefinition);
+		context.refresh();
+
+		ScheduledTaskHolder postProcessor = context.getBean("postProcessor", ScheduledTaskHolder.class);
+		assertThat(postProcessor.getScheduledTasks()).hasSize(0);
+
+		Object target = context.getAutowireCapableBeanFactory().createBean(OneTimeTaskBean.class);
+		assertThat(postProcessor.getScheduledTasks()).hasSize(1);
+		@SuppressWarnings("unchecked")
+		Set<Object> manualTasks = (Set<Object>)
+				new DirectFieldAccessor(postProcessor).getPropertyValue("manualCancellationOnContextClose");
+		assertThat(manualTasks).hasSize(1);
+		assertThat(manualTasks).contains(target);
+	}
+
+	@Test
 	void cronTask() {
 		BeanDefinition processorDefinition = new RootBeanDefinition(ScheduledAnnotationBeanPostProcessor.class);
 		BeanDefinition targetDefinition = new RootBeanDefinition(CronTestBean.class);
@@ -352,9 +371,6 @@ class ScheduledAnnotationBeanPostProcessorTests {
 		assertThat(condition).isTrue();
 		CronTrigger cronTrigger = (CronTrigger) trigger;
 		ZonedDateTime dateTime = ZonedDateTime.of(2013, 4, 15, 4, 0, 0, 0, ZoneId.of("GMT+10"));
-//		Calendar cal = Calendar.getInstance(TimeZone.getTimeZone("GMT+10"));
-//		cal.clear();
-//		cal.set(2013, 3, 15, 4, 0);  // 15-04-2013 4:00 GMT+10;
 		Instant lastScheduledExecution = dateTime.toInstant();
 		Instant lastActualExecution = dateTime.toInstant();
 		dateTime = dateTime.plusMinutes(30);
@@ -1026,6 +1042,7 @@ class ScheduledAnnotationBeanPostProcessorTests {
 		}
 	}
 
+
 	static class PropertyPlaceholderWithFixedDelayInSeconds {
 
 		@Scheduled(fixedDelayString = "${fixedDelay}", initialDelayString = "${initialDelay}", timeUnit = TimeUnit.SECONDS)
@@ -1040,6 +1057,7 @@ class ScheduledAnnotationBeanPostProcessorTests {
 		void fixedRate() {
 		}
 	}
+
 
 	static class PropertyPlaceholderWithFixedRateInSeconds {
 
@@ -1071,9 +1089,11 @@ class ScheduledAnnotationBeanPostProcessorTests {
 		}
 	}
 
+
 	@Retention(RetentionPolicy.RUNTIME)
 	@ConvertWith(NameToClass.Converter.class)
 	private @interface NameToClass {
+
 		class Converter implements ArgumentConverter {
 			@Override
 			public Class<?> convert(Object beanClassName, ParameterContext context) throws ArgumentConversionException {

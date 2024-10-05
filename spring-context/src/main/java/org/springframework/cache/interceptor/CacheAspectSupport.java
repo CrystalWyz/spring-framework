@@ -503,9 +503,15 @@ public abstract class CacheAspectSupport extends AbstractCacheInvoker
 			if (CompletableFuture.class.isAssignableFrom(context.getMethod().getReturnType())) {
 				CompletableFuture<?> result = cache.retrieve(key);
 				if (result != null) {
-					return result.thenCompose(value -> (CompletableFuture<?>) evaluate(
+					return result.exceptionally(ex -> {
+						getErrorHandler().handleCacheGetError((RuntimeException) ex, cache, key);
+						return null;
+					}).thenCompose(value -> (CompletableFuture<?>) evaluate(
 							(value != null ? CompletableFuture.completedFuture(unwrapCacheValue(value)) : null),
 							invoker, method, contexts));
+				}
+				else {
+					continue;
 				}
 			}
 			if (this.reactiveCachingHandler != null) {
@@ -630,7 +636,7 @@ public abstract class CacheAspectSupport extends AbstractCacheInvoker
 		if (result instanceof CompletableFuture<?> future) {
 			return future.whenComplete((value, ex) -> {
 				if (ex == null) {
-					performCacheEvicts(applicable, result);
+					performCacheEvicts(applicable, value);
 				}
 			});
 		}
@@ -1112,7 +1118,7 @@ public abstract class CacheAspectSupport extends AbstractCacheInvoker
 			ReactiveAdapter adapter = (result != null ? this.registry.getAdapter(result.getClass()) : null);
 			if (adapter != null) {
 				return adapter.fromPublisher(Mono.from(adapter.toPublisher(result))
-						.doOnSuccess(value -> performCacheEvicts(contexts, result)));
+						.doOnSuccess(value -> performCacheEvicts(contexts, value)));
 			}
 			return NOT_HANDLED;
 		}
@@ -1131,12 +1137,32 @@ public abstract class CacheAspectSupport extends AbstractCacheInvoker
 				if (adapter.isMultiValue()) {
 					return adapter.fromPublisher(Flux.from(Mono.fromFuture(cachedFuture))
 							.switchIfEmpty(Flux.defer(() -> (Flux) evaluate(null, invoker, method, contexts)))
-							.flatMap(v -> evaluate(valueToFlux(v, contexts), invoker, method, contexts)));
+							.flatMap(v -> evaluate(valueToFlux(v, contexts), invoker, method, contexts))
+							.onErrorResume(RuntimeException.class, ex -> {
+								try {
+									getErrorHandler().handleCacheGetError((RuntimeException) ex, cache, key);
+									Object e = evaluate(null, invoker, method, contexts);
+									return (e != null ? e : Flux.error((RuntimeException) ex));
+								}
+								catch (RuntimeException exception) {
+									return Flux.error(exception);
+								}
+							}));
 				}
 				else {
 					return adapter.fromPublisher(Mono.fromFuture(cachedFuture)
 							.switchIfEmpty(Mono.defer(() -> (Mono) evaluate(null, invoker, method, contexts)))
-							.flatMap(v -> evaluate(Mono.justOrEmpty(unwrapCacheValue(v)), invoker, method, contexts)));
+							.flatMap(v -> evaluate(Mono.justOrEmpty(unwrapCacheValue(v)), invoker, method, contexts))
+							.onErrorResume(RuntimeException.class, ex -> {
+								try {
+									getErrorHandler().handleCacheGetError((RuntimeException) ex, cache, key);
+									Object e = evaluate(null, invoker, method, contexts);
+									return (e != null ? e : Mono.error((RuntimeException) ex));
+								}
+								catch (RuntimeException exception) {
+									return Mono.error(exception);
+								}
+							}));
 				}
 			}
 			return NOT_HANDLED;

@@ -34,6 +34,7 @@ import java.net.URLClassLoader;
 import java.net.URLConnection;
 import java.nio.file.FileSystemNotFoundException;
 import java.nio.file.FileSystems;
+import java.nio.file.FileVisitOption;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Collections;
@@ -411,6 +412,7 @@ public class PathMatchingResourcePatternResolver implements ResourcePatternResol
 	 * @see #doFindAllClassPathResources
 	 * @see #doFindPathMatchingFileResources
 	 */
+	@SuppressWarnings("deprecation")  // on JDK 20 (deprecated URL constructor)
 	protected Resource convertClassLoaderURL(URL url) {
 		if (ResourceUtils.URL_PROTOCOL_FILE.equals(url.getProtocol())) {
 			try {
@@ -423,6 +425,19 @@ public class PathMatchingResourcePatternResolver implements ResourcePatternResol
 			}
 		}
 		else {
+			String urlString = url.toString();
+			String cleanedPath = StringUtils.cleanPath(urlString);
+			if (!cleanedPath.equals(urlString)) {
+				// Prefer cleaned URL, aligned with UrlResource#createRelative(String)
+				try {
+					// Retain original URL instance, potentially including custom URLStreamHandler.
+					return new UrlResource(new URL(url, cleanedPath));
+				}
+				catch (MalformedURLException ex) {
+					// Fallback to regular URL construction below...
+				}
+			}
+			// Retain original URL instance, potentially including custom URLStreamHandler.
 			return new UrlResource(url);
 		}
 	}
@@ -854,7 +869,7 @@ public class PathMatchingResourcePatternResolver implements ResourcePatternResol
 					.formatted(rootPath.toAbsolutePath(), subPattern));
 		}
 
-		try (Stream<Path> files = Files.walk(rootPath)) {
+		try (Stream<Path> files = Files.walk(rootPath, FileVisitOption.FOLLOW_LINKS)) {
 			files.filter(isMatchingFile).sorted().map(FileSystemResource::new).forEach(result::add);
 		}
 		catch (Exception ex) {

@@ -222,15 +222,15 @@ public class AdvisedSupport extends ProxyConfig implements Advised {
 
 	/**
 	 * Add a new proxied interface.
-	 * @param intf the additional interface to proxy
+	 * @param ifc the additional interface to proxy
 	 */
-	public void addInterface(Class<?> intf) {
-		Assert.notNull(intf, "Interface must not be null");
-		if (!intf.isInterface()) {
-			throw new IllegalArgumentException("[" + intf.getName() + "] is not an interface");
+	public void addInterface(Class<?> ifc) {
+		Assert.notNull(ifc, "Interface must not be null");
+		if (!ifc.isInterface()) {
+			throw new IllegalArgumentException("[" + ifc.getName() + "] is not an interface");
 		}
-		if (!this.interfaces.contains(intf)) {
-			this.interfaces.add(intf);
+		if (!this.interfaces.contains(ifc)) {
+			this.interfaces.add(ifc);
 			adviceChanged();
 		}
 	}
@@ -238,12 +238,12 @@ public class AdvisedSupport extends ProxyConfig implements Advised {
 	/**
 	 * Remove a proxied interface.
 	 * <p>Does nothing if the given interface isn't proxied.
-	 * @param intf the interface to remove from the proxy
+	 * @param ifc the interface to remove from the proxy
 	 * @return {@code true} if the interface was removed; {@code false}
 	 * if the interface was not found and hence could not be removed
 	 */
-	public boolean removeInterface(Class<?> intf) {
-		return this.interfaces.remove(intf);
+	public boolean removeInterface(Class<?> ifc) {
+		return this.interfaces.remove(ifc);
 	}
 
 	@Override
@@ -252,9 +252,9 @@ public class AdvisedSupport extends ProxyConfig implements Advised {
 	}
 
 	@Override
-	public boolean isInterfaceProxied(Class<?> intf) {
+	public boolean isInterfaceProxied(Class<?> ifc) {
 		for (Class<?> proxyIntf : this.interfaces) {
-			if (intf.isAssignableFrom(proxyIntf)) {
+			if (ifc.isAssignableFrom(proxyIntf)) {
 				return true;
 			}
 		}
@@ -369,8 +369,7 @@ public class AdvisedSupport extends ProxyConfig implements Advised {
 	private void validateIntroductionAdvisor(IntroductionAdvisor advisor) {
 		advisor.validateInterfaces();
 		// If the advisor passed validation, we can make the change.
-		Class<?>[] ifcs = advisor.getInterfaces();
-		for (Class<?> ifc : ifcs) {
+		for (Class<?> ifc : advisor.getInterfaces()) {
 			addInterface(ifc);
 		}
 	}
@@ -489,20 +488,27 @@ public class AdvisedSupport extends ProxyConfig implements Advised {
 	 * @return a List of MethodInterceptors (may also include InterceptorAndDynamicMethodMatchers)
 	 */
 	public List<Object> getInterceptorsAndDynamicInterceptionAdvice(Method method, @Nullable Class<?> targetClass) {
-		if (this.methodCache == null) {
+		List<Object> cachedInterceptors;
+		if (this.methodCache != null) {
+			// Method-specific cache for method-specific pointcuts
+			MethodCacheKey cacheKey = new MethodCacheKey(method);
+			cachedInterceptors = this.methodCache.get(cacheKey);
+			if (cachedInterceptors == null) {
+				cachedInterceptors = this.advisorChainFactory.getInterceptorsAndDynamicInterceptionAdvice(
+						this, method, targetClass);
+				this.methodCache.put(cacheKey, cachedInterceptors);
+			}
+		}
+		else {
 			// Shared cache since there are no method-specific advisors (see below).
-			List<Object> cachedInterceptors = this.cachedInterceptors;
+			cachedInterceptors = this.cachedInterceptors;
 			if (cachedInterceptors == null) {
 				cachedInterceptors = this.advisorChainFactory.getInterceptorsAndDynamicInterceptionAdvice(
 						this, method, targetClass);
 				this.cachedInterceptors = cachedInterceptors;
 			}
-			return cachedInterceptors;
 		}
-
-		// Method-specific cache for method-specific pointcuts
-		return this.methodCache.computeIfAbsent(new MethodCacheKey(method), k ->
-				this.advisorChainFactory.getInterceptorsAndDynamicInterceptionAdvice(this, method, targetClass));
+		return cachedInterceptors;
 	}
 
 	/**

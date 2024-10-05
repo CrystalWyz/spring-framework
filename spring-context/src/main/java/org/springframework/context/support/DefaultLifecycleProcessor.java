@@ -60,10 +60,6 @@ import org.springframework.util.ClassUtils;
  * groups for specific phases, on startup/shutdown as well as for explicit start/stop
  * interactions on a {@link org.springframework.context.ConfigurableApplicationContext}.
  *
- * <p>Provides interaction with {@link Lifecycle} and {@link SmartLifecycle} beans in
- * groups for specific phases, on startup/shutdown as well as for explicit start/stop
- * interactions on a {@link org.springframework.context.ConfigurableApplicationContext}.
- *
  * <p>As of 6.1, this also includes support for JVM checkpoint/restore (Project CRaC)
  * when the {@code org.crac:crac} dependency on the classpath.
  *
@@ -98,7 +94,7 @@ public class DefaultLifecycleProcessor implements LifecycleProcessor, BeanFactor
 	public static final String ON_REFRESH_VALUE = "onRefresh";
 
 
-	private static final boolean checkpointOnRefresh =
+	private static boolean checkpointOnRefresh =
 			ON_REFRESH_VALUE.equalsIgnoreCase(SpringProperties.getProperty(CHECKPOINT_PROPERTY_NAME));
 
 	private static final boolean exitOnRefresh =
@@ -194,6 +190,7 @@ public class DefaultLifecycleProcessor implements LifecycleProcessor, BeanFactor
 	@Override
 	public void onRefresh() {
 		if (checkpointOnRefresh) {
+			checkpointOnRefresh = false;
 			new CracDelegate().checkpointRestore();
 		}
 		if (exitOnRefresh) {
@@ -249,13 +246,13 @@ public class DefaultLifecycleProcessor implements LifecycleProcessor, BeanFactor
 
 		lifecycleBeans.forEach((beanName, bean) -> {
 			if (!autoStartupOnly || isAutoStartupCandidate(beanName, bean)) {
-				int phase = getPhase(bean);
-				phases.computeIfAbsent(
-						phase,
-						p -> new LifecycleGroup(phase, this.timeoutPerShutdownPhase, lifecycleBeans, autoStartupOnly)
+				int startupPhase = getPhase(bean);
+				phases.computeIfAbsent(startupPhase,
+						phase -> new LifecycleGroup(phase, this.timeoutPerShutdownPhase, lifecycleBeans, autoStartupOnly)
 				).add(beanName, bean);
 			}
 		});
+
 		if (!phases.isEmpty()) {
 			phases.values().forEach(LifecycleGroup::start);
 		}
@@ -306,13 +303,14 @@ public class DefaultLifecycleProcessor implements LifecycleProcessor, BeanFactor
 	private void stopBeans() {
 		Map<String, Lifecycle> lifecycleBeans = getLifecycleBeans();
 		Map<Integer, LifecycleGroup> phases = new TreeMap<>(Comparator.reverseOrder());
+
 		lifecycleBeans.forEach((beanName, bean) -> {
 			int shutdownPhase = getPhase(bean);
-			phases.computeIfAbsent(
-					shutdownPhase,
-					p -> new LifecycleGroup(shutdownPhase, this.timeoutPerShutdownPhase, lifecycleBeans, false)
+			phases.computeIfAbsent(shutdownPhase,
+					phase -> new LifecycleGroup(phase, this.timeoutPerShutdownPhase, lifecycleBeans, false)
 			).add(beanName, bean);
 		});
+
 		if (!phases.isEmpty()) {
 			phases.values().forEach(LifecycleGroup::stop);
 		}
@@ -372,6 +370,9 @@ public class DefaultLifecycleProcessor implements LifecycleProcessor, BeanFactor
 			catch (Throwable ex) {
 				if (logger.isWarnEnabled()) {
 					logger.warn("Failed to stop bean '" + beanName + "'", ex);
+				}
+				if (bean instanceof SmartLifecycle) {
+					latch.countDown();
 				}
 			}
 		}

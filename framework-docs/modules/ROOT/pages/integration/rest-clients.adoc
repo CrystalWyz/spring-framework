@@ -71,7 +71,7 @@ This can be done with `method(HttpMethod)` or with the convenience methods `get(
 Next, the request URI can be specified with the `uri` methods.
 This step is optional and can be skipped if the `RestClient` is configured with a default URI.
 The URL is typically specified as a `String`, with optional URI template variables.
-The following example configures a GET request to `"https://example.com/orders/42`:
+The following example configures a GET request to `https://example.com/orders/42`:
 
 [tabs]
 ======
@@ -289,7 +289,7 @@ String result = restClient.get() <1>
   .uri("https://example.com/this-url-does-not-exist") <1>
   .retrieve()
   .onStatus(HttpStatusCode::is4xxClientError, (request, response) -> { <2>
-      throw new MyCustomRuntimeException(response.getStatusCode(), response.getHeaders()) <3>
+      throw new MyCustomRuntimeException(response.getStatusCode(), response.getHeaders()); <3>
   })
   .body(String.class);
 ----

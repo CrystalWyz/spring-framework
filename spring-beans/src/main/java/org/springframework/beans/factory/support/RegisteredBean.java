@@ -43,6 +43,8 @@ import org.springframework.util.StringUtils;
  * In the case of inner-beans, the bean name may have been generated.
  *
  * @author Phillip Webb
+ * @author Stephane Nicoll
+ * @author Juergen Hoeller
  * @since 6.0
  */
 public final class RegisteredBean {
@@ -227,9 +229,8 @@ public final class RegisteredBean {
 		if (executable instanceof Method method && !Modifier.isStatic(method.getModifiers())) {
 			String factoryBeanName = getMergedBeanDefinition().getFactoryBeanName();
 			if (factoryBeanName != null && this.beanFactory.containsBean(factoryBeanName)) {
-				Class<?> target = this.beanFactory.getMergedBeanDefinition(factoryBeanName)
-						.getResolvableType().toClass();
-				return new InstantiationDescriptor(executable, target);
+				return new InstantiationDescriptor(executable,
+						this.beanFactory.getMergedBeanDefinition(factoryBeanName).getResolvableType().toClass());
 			}
 		}
 		return new InstantiationDescriptor(executable, executable.getDeclaringClass());
@@ -260,13 +261,16 @@ public final class RegisteredBean {
 				.append("mergedBeanDefinition", getMergedBeanDefinition()).toString();
 	}
 
+
 	/**
-	 * Describe how a bean should be instantiated. While the {@code targetClass}
-	 * is usually the declaring class of the {@code executable}, there are cases
-	 * where retaining the actual concrete type is necessary.
-	 * @param executable the {@link Executable} to invoke
-	 * @param targetClass the target {@link Class} of the executable
+	 * Descriptor for how a bean should be instantiated. While the {@code targetClass}
+	 * is usually the declaring class of the {@code executable} (in case of a constructor
+	 * or a locally declared factory method), there are cases where retaining the actual
+	 * concrete class is necessary (e.g. for an inherited factory method).
 	 * @since 6.1.7
+	 * @param executable the {@link Executable} ({@link java.lang.reflect.Constructor}
+	 * or {@link java.lang.reflect.Method}) to invoke
+	 * @param targetClass the target {@link Class} of the executable
 	 */
 	public record InstantiationDescriptor(Executable executable, Class<?> targetClass) {
 
@@ -274,6 +278,7 @@ public final class RegisteredBean {
 			this(executable, executable.getDeclaringClass());
 		}
 	}
+
 
 	/**
 	 * Resolver used to obtain inner-bean details.
