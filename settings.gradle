@@ -55,3 +55,6 @@ settings.gradle.projectsLoaded {
 		}
 	}
 }
+include 'entrance'
+include 'spring-entrance'
+
